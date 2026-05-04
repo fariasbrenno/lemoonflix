@@ -217,7 +217,7 @@ class MemberAreaAppController extends Controller
                 'content_url' => $currentLesson->content_url,
                 'content_files' => $currentLesson->content_files,
                 'link_title' => $currentLesson->link_title,
-                'content_text' => \App\Support\HtmlSanitizer::sanitize($currentLesson->content_text),
+                'content_text' => \App\Support\HtmlSanitizer::sanitize($currentLesson->content_text, $currentLesson->type === MemberLesson::TYPE_TEXT),
                 'duration_seconds' => $currentLesson->duration_seconds,
                 'is_completed' => $this->isLessonCompleted($user->id, $currentLesson->id),
                 'module' => ['id' => $module->id, 'title' => $module->title],
@@ -359,7 +359,7 @@ class MemberAreaAppController extends Controller
             'content_url' => $lesson->content_url,
             'content_files' => $lesson->content_files,
             'link_title' => $lesson->link_title,
-            'content_text' => \App\Support\HtmlSanitizer::sanitize($lesson->content_text),
+            'content_text' => \App\Support\HtmlSanitizer::sanitize($lesson->content_text, $lesson->type === MemberLesson::TYPE_TEXT),
             'duration_seconds' => $lesson->duration_seconds,
             'is_completed' => $this->isLessonCompleted($user->id, $lesson->id),
             'module' => $wrapper !== null
