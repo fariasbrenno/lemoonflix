@@ -114,7 +114,7 @@ class PluginRegistry
 
     /**
      * @return list<string> Raízes na ordem: bundled → instalações do utilizador → extras (.env).
-     *        O mesmo slug em raízes posteriores sobrepõe manifestos anteriores.
+     *                      O mesmo slug em raízes posteriores sobrepõe manifestos anteriores.
      */
     public static function discoveryRoots(): array
     {
@@ -227,6 +227,7 @@ class PluginRegistry
                     'category' => ! empty($manifest['category']) ? $manifest['category'] : 'outros',
                     'menu' => $manifest['menu'] ?? null,
                     'routes' => $manifest['routes'] ?? null,
+                    'public_routes' => $manifest['public_routes'] ?? null,
                     'events' => $manifest['events'] ?? [],
                     'migrations' => $manifest['migrations'] ?? null,
                     'description' => $manifest['description'] ?? null,

@@ -5,6 +5,7 @@ import MemberAreaAppLayout from '@/Layouts/MemberAreaAppLayout.vue';
 import Button from '@/components/ui/Button.vue';
 import MemberAreaVideoPlayer from '@/components/MemberAreaVideoPlayer.vue';
 import MemberPdfPresentationViewer from '@/components/MemberPdfPresentationViewer.vue';
+import MemberPdfReader from '@/components/MemberPdfReader.vue';
 import { formatLessonDescription } from '@/lib/utils';
 import { Link as LinkIcon, CheckCircle, ChevronLeft, ChevronRight } from 'lucide-vue-next';
 
@@ -22,6 +23,11 @@ const props = defineProps({
     comments_enabled: { type: Boolean, default: false },
     comments_require_approval: { type: Boolean, default: true },
     lesson_comments: { type: Array, default: () => [] },
+    base_url: { type: String, default: '' },
+    course_lesson_progress: {
+        type: Object,
+        default: () => ({ completed: 0, total: 0 }),
+    },
 });
 
 function normalizePdfFiles(lesson, defaultName = 'Material') {
@@ -56,6 +62,38 @@ const currentPresentationFiles = computed(() =>
         : []
 );
 
+const memberAreaBaseUrl = computed(() => {
+    const u = (props.base_url || '').trim();
+    if (u) return u.replace(/\/$/, '');
+    return `/m/${props.slug}`;
+});
+
+/** Proxy same-origin URLs para o leitor PDF (usa base_url do backend). */
+function pdfReaderViewerFiles(lesson, defaultName = 'Documento') {
+    const norm = normalizePdfFiles(lesson, defaultName);
+    const p = memberAreaBaseUrl.value;
+    return norm.map((f, i) => ({
+        ...f,
+        url: `${p}/aula/${lesson.id}/pdf/${i}`,
+    }));
+}
+
+const currentPdfReaderFiles = computed(() =>
+    props.current_lesson?.type === 'pdf_reader'
+        ? pdfReaderViewerFiles(props.current_lesson)
+        : []
+);
+
+const lessonSidebarQuery = ref('');
+const filteredLessons = computed(() => {
+    const q = lessonSidebarQuery.value.trim().toLowerCase();
+    const list = props.lessons || [];
+    if (!q) return list;
+    return list.filter((l) => (l.title || '').toLowerCase().includes(q));
+});
+
+const courseProgress = computed(() => props.course_lesson_progress || { completed: 0, total: 0 });
+
 const completedLessonIds = ref(new Set());
 const completed = ref(props.current_lesson?.is_completed ?? false);
 let autoCompleteTimer = null;
@@ -89,7 +127,7 @@ function scheduleAutoComplete() {
 function shouldAutoCompleteNonVideo() {
     if (!props.current_lesson || completed.value) return false;
     const t = props.current_lesson.type;
-    if (t === 'pdf_presentation') return false;
+    if (t === 'pdf_presentation' || t === 'pdf_reader') return false;
     return t === 'link' || t === 'pdf' || t === 'text' || (t !== 'video' && (props.current_lesson.content_url || props.current_lesson.content_text));
 }
 
@@ -150,6 +188,10 @@ function scrollCarousel(sectionId, direction) {
     if (!el) return;
     el.scrollBy({ left: 272 * direction, behavior: 'smooth' });
 }
+
+function onPdfReaderLastPage() {
+    markComplete();
+}
 </script>
 
 <template>
@@ -190,6 +232,24 @@ function scrollCarousel(sectionId, direction) {
                     <template v-else-if="current_lesson.type === 'pdf_presentation' && currentPresentationFiles.length">
                         <div class="p-4">
                             <MemberPdfPresentationViewer :files="currentPresentationFiles" />
+                        </div>
+                        <div
+                            v-if="current_lesson.content_text"
+                            class="prose prose-invert max-w-none border-t border-zinc-700 p-6"
+                            v-html="formatLessonDescription(current_lesson.content_text)"
+                        />
+                    </template>
+                    <template v-else-if="current_lesson.type === 'pdf_reader' && currentPdfReaderFiles.length">
+                        <div class="p-4">
+                            <MemberPdfReader
+                                :key="current_lesson.id"
+                                :files="currentPdfReaderFiles"
+                                :base-url="memberAreaBaseUrl"
+                                :lesson-id="current_lesson.id"
+                                :likes-count="current_lesson.likes_count ?? 0"
+                                :user-liked="!!current_lesson.user_liked"
+                                @last-page-reached="onPdfReaderLastPage"
+                            />
                         </div>
                         <div
                             v-if="current_lesson.content_text"
@@ -277,10 +337,29 @@ function scrollCarousel(sectionId, direction) {
                     <Link :href="`/m/${slug}`" class="text-sm text-zinc-400 hover:text-[var(--ma-primary)]">← Início</Link>
                     <h2 class="mt-2 text-lg font-semibold">{{ module.title }}</h2>
                     <p v-if="module.section" class="text-xs text-zinc-500">{{ module.section.title }}</p>
+                    <div v-if="courseProgress.total > 0" class="mt-3 space-y-1">
+                        <div class="flex justify-between text-xs text-zinc-400">
+                            <span>Progresso do curso</span>
+                            <span class="tabular-nums">{{ courseProgress.completed }} / {{ courseProgress.total }} aulas</span>
+                        </div>
+                        <div class="h-2 overflow-hidden rounded-full bg-zinc-700">
+                            <div
+                                class="h-full rounded-full bg-[var(--ma-primary)] transition-[width]"
+                                :style="{ width: `${Math.min(100, Math.round((courseProgress.completed / courseProgress.total) * 100))}%` }"
+                            />
+                        </div>
+                    </div>
+                    <input
+                        v-model="lessonSidebarQuery"
+                        type="search"
+                        placeholder="Buscar aula…"
+                        class="mt-3 w-full rounded-lg border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-500 focus:border-[var(--ma-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--ma-primary)]"
+                        autocomplete="off"
+                    />
                 </div>
                 <nav class="max-h-[60vh] overflow-y-auto p-2">
-                    <template v-if="lessons.length">
-                        <template v-for="lesson in lessons" :key="lesson.id">
+                    <template v-if="filteredLessons.length">
+                        <template v-for="(lesson, idx) in filteredLessons" :key="lesson.id">
                             <Link
                                 v-if="!lesson.is_locked"
                                 :href="lessonUrl(lesson.id)"
@@ -290,16 +369,17 @@ function scrollCarousel(sectionId, direction) {
                                     : 'text-zinc-300 hover:bg-zinc-700/50 hover:text-white'"
                             >
                                 <CheckCircle v-if="isLessonCompleted(lesson)" class="h-4 w-4 shrink-0 text-emerald-500" />
-                                <span v-else class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-zinc-500 text-xs">{{ lessons.indexOf(lesson) + 1 }}</span>
+                                <span v-else class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-zinc-500 text-xs">{{ idx + 1 }}</span>
                                 <span class="min-w-0 flex-1 truncate">{{ lesson.title || 'Sem título' }}</span>
                             </Link>
                             <div v-else class="flex cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm opacity-70">
-                                <span class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-zinc-600 text-xs">{{ lessons.indexOf(lesson) + 1 }}</span>
+                                <span class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-zinc-600 text-xs">{{ idx + 1 }}</span>
                                 <span class="min-w-0 flex-1 truncate text-zinc-400">{{ lesson.title || 'Sem título' }}</span>
                                 <span v-if="lesson.lock_message" class="shrink-0 text-[10px] text-zinc-500">{{ lesson.lock_message }}</span>
                             </div>
                         </template>
                     </template>
+                    <p v-else-if="lessons.length" class="px-3 py-4 text-sm text-zinc-500">Nenhuma aula encontrada.</p>
                     <p v-else class="px-3 py-4 text-sm text-zinc-500">Nenhuma aula neste módulo.</p>
                 </nav>
             </aside>

@@ -23,6 +23,7 @@ class PluginServiceProvider extends ServiceProvider
             $this->loadPluginBootstrap($plugin);
             $this->loadPluginMigrations($plugin);
             $this->loadPluginRoutes($plugin);
+            $this->loadPluginPublicRoutes($plugin);
         }
     }
 
@@ -37,7 +38,9 @@ class PluginServiceProvider extends ServiceProvider
             if (\Illuminate\Support\Facades\Schema::hasTable('plugins')) {
                 return PluginRegistry::enabled();
             }
-        } catch (\Throwable) {}
+        } catch (\Throwable) {
+        }
+
         return $this->fallbackInstalledFromDisk();
     }
 
@@ -96,6 +99,26 @@ class PluginServiceProvider extends ServiceProvider
         $prefix = $slug;
         Route::middleware(['web', 'auth', 'role:admin|infoprodutor'])
             ->prefix($prefix)
+            ->group($routesFile);
+    }
+
+    /**
+     * Rotas públicas (ex.: webhooks de entrada) — sem auth; CSRF exceto em bootstrap/app.php.
+     */
+    private function loadPluginPublicRoutes(array $plugin): void
+    {
+        $decl = $plugin['public_routes'] ?? null;
+        if (! is_string($decl) || $decl === '') {
+            return;
+        }
+        $pluginPath = $plugin['path'];
+        $routesFile = $pluginPath.DIRECTORY_SEPARATOR.str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $decl);
+        if (! is_file($routesFile)) {
+            return;
+        }
+
+        Route::middleware(['web', 'throttle:120,1'])
+            ->prefix('webhooks/inbound')
             ->group($routesFile);
     }
 }

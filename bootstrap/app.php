@@ -25,6 +25,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Webhooks recebem POST de gateways externos sem CSRF token
         $middleware->validateCsrfTokens(except: [
             'webhooks/gateways/*',
+            'webhooks/inbound/*',
         ]);
 
         $middleware->web(prepend: [
@@ -55,6 +56,7 @@ return Application::configure(basePath: dirname(__DIR__))
             if ($request->header('X-Inertia')) {
                 return redirect()->to('/login')->with('error', 'Sessão expirada. Tente fazer login novamente.');
             }
+
             return null;
         });
 
@@ -80,12 +82,14 @@ return Application::configure(basePath: dirname(__DIR__))
                         if ($request->header('X-Inertia')) {
                             return redirect()->to($url)->with('success', 'Migrações executadas automaticamente. Página recarregada.');
                         }
+
                         return redirect()->to($url)->with('success', 'Migrações executadas automaticamente. Recarregue a página se necessário.');
                     } catch (\Throwable $migrateEx) {
                         report($migrateEx);
                     }
                 }
             }
+
             return null;
         });
     })

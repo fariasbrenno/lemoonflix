@@ -5,6 +5,7 @@ import MemberAreaAppLayout from '@/Layouts/MemberAreaAppLayout.vue';
 import Button from '@/components/ui/Button.vue';
 import MemberAreaVideoPlayer from '@/components/MemberAreaVideoPlayer.vue';
 import MemberPdfPresentationViewer from '@/components/MemberPdfPresentationViewer.vue';
+import MemberPdfReader from '@/components/MemberPdfReader.vue';
 import { formatLessonDescription } from '@/lib/utils';
 
 defineOptions({ layout: MemberAreaAppLayout });
@@ -14,6 +15,7 @@ const props = defineProps({
     config: { type: Object, default: () => ({}) },
     lesson: { type: Object, required: true },
     slug: { type: String, required: true },
+    base_url: { type: String, default: '' },
     comments_enabled: { type: Boolean, default: false },
     comments_require_approval: { type: Boolean, default: true },
     lesson_comments: { type: Array, default: () => [] },
@@ -49,6 +51,25 @@ const presentationFiles = computed(() =>
     props.lesson?.type === 'pdf_presentation' ? pdfPresentationViewerFiles(props.slug, props.lesson) : []
 );
 
+const memberAreaBaseUrl = computed(() => {
+    const u = (props.base_url || '').trim();
+    if (u) return u.replace(/\/$/, '');
+    return `/m/${props.slug}`;
+});
+
+function pdfReaderViewerFiles(lesson, defaultName = 'Documento') {
+    const norm = normalizePdfFiles(lesson, defaultName);
+    const p = memberAreaBaseUrl.value;
+    return norm.map((f, i) => ({
+        ...f,
+        url: `${p}/aula/${lesson.id}/pdf/${i}`,
+    }));
+}
+
+const pdfReaderFiles = computed(() =>
+    props.lesson?.type === 'pdf_reader' ? pdfReaderViewerFiles(props.lesson) : []
+);
+
 const completed = ref(props.lesson.is_completed ?? false);
 const commentContent = ref('');
 const commentSubmitting = ref(false);
@@ -74,7 +95,7 @@ function scheduleAutoComplete() {
 function shouldAutoCompleteNonVideo() {
     if (!props.lesson || completed.value) return false;
     const t = props.lesson.type;
-    if (t === 'pdf_presentation') return false;
+    if (t === 'pdf_presentation' || t === 'pdf_reader') return false;
     return t === 'link' || t === 'pdf' || t === 'text' || (t !== 'video' && (props.lesson.content_url || props.lesson.content_text));
 }
 
@@ -96,6 +117,10 @@ function submitComment() {
         onFinish: () => { commentSubmitting.value = false; commentContent.value = ''; },
     });
 }
+function onPdfReaderLastPage() {
+    markComplete();
+}
+
 function formatCommentDate(iso) {
     if (!iso) return '';
     try {
@@ -144,6 +169,23 @@ function formatCommentDate(iso) {
             <template v-else-if="lesson.type === 'pdf_presentation' && presentationFiles.length">
                 <div class="p-4">
                     <MemberPdfPresentationViewer :files="presentationFiles" />
+                </div>
+                <div
+                    v-if="lesson.content_text"
+                    class="prose prose-invert max-w-none border-t border-zinc-700 p-6"
+                    v-html="formatLessonDescription(lesson.content_text)"
+                />
+            </template>
+            <template v-else-if="lesson.type === 'pdf_reader' && pdfReaderFiles.length">
+                <div class="p-4">
+                    <MemberPdfReader
+                        :files="pdfReaderFiles"
+                        :base-url="memberAreaBaseUrl"
+                        :lesson-id="lesson.id"
+                        :likes-count="lesson.likes_count ?? 0"
+                        :user-liked="!!lesson.user_liked"
+                        @last-page-reached="onPdfReaderLastPage"
+                    />
                 </div>
                 <div
                     v-if="lesson.content_text"

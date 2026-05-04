@@ -13,6 +13,8 @@ class MemberLesson extends Model
     public const TYPE_PDF = 'pdf';
     /** Slides / leitura em tela com navegação por páginas (pdf.js), distinto de "Material" (download). */
     public const TYPE_PDF_PRESENTATION = 'pdf_presentation';
+    /** Leitor de PDF completo (marcações, miniaturas, curtidas) — mesma origem de arquivo que pdf_presentation. */
+    public const TYPE_PDF_READER = 'pdf_reader';
     public const TYPE_TEXT = 'text';
 
     protected $fillable = [
@@ -39,6 +41,7 @@ class MemberLesson extends Model
             'duration_seconds' => 'integer',
             'is_free' => 'boolean',
             'watermark_enabled' => 'boolean',
+            'likes_count' => 'integer',
             'content_files' => 'array',
             'release_after_days' => 'integer',
             'release_at_date' => 'date:Y-m-d',
@@ -58,5 +61,15 @@ class MemberLesson extends Model
     public function comments(): HasMany
     {
         return $this->hasMany(MemberComment::class, 'member_lesson_id');
+    }
+
+    public function lessonLikes(): HasMany
+    {
+        return $this->hasMany(MemberLessonLike::class, 'member_lesson_id');
+    }
+
+    public function pdfAnnotations(): HasMany
+    {
+        return $this->hasMany(MemberLessonPdfAnnotation::class, 'member_lesson_id');
     }
 }

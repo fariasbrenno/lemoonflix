@@ -533,9 +533,15 @@ const modulosLessonFormSaving = ref(false);
 const lessonPdfFileInput = ref(null);
 const lessonPdfUploading = ref(false);
 
-/** Material (download) ou apresentação (visualização com pdf.js) — mesmos campos no backend. */
+/** Material (download), apresentação ou leitor PDF — mesmos campos no backend. */
 function isLessonPdfContentType(type) {
-    return type === 'pdf' || type === 'pdf_presentation';
+    return type === 'pdf' || type === 'pdf_presentation' || type === 'pdf_reader';
+}
+
+function pdfLessonFileLabel(type) {
+    if (type === 'pdf_presentation') return 'Apresentação';
+    if (type === 'pdf_reader') return 'Documento';
+    return 'Material';
 }
 
 const modulosSelectedModule = computed(() => {
@@ -556,7 +562,7 @@ function selectModuleForAulas(moduleId) {
 function openModulosLessonForm(lesson) {
     if (lesson) {
         const existingFiles = Array.isArray(lesson.content_files) ? lesson.content_files : [];
-        const fileLabel = lesson.type === 'pdf_presentation' ? 'Apresentação' : 'Material';
+        const fileLabel = pdfLessonFileLabel(lesson.type);
         const normalizedFiles = existingFiles
             .map((it) => {
                 if (typeof it === 'string') return { url: it, name: fileLabel };
@@ -2309,6 +2315,7 @@ const inputClass = 'block w-full rounded-lg border border-zinc-300 bg-white px-3
                                                     <FileVideo v-if="lesson.type === 'video'" class="h-4 w-4 shrink-0 text-zinc-500" />
                                                     <Link v-else-if="lesson.type === 'link'" class="h-4 w-4 shrink-0 text-zinc-500" />
                                                     <Presentation v-else-if="lesson.type === 'pdf_presentation'" class="h-4 w-4 shrink-0 text-zinc-500" />
+                                                    <BookOpen v-else-if="lesson.type === 'pdf_reader'" class="h-4 w-4 shrink-0 text-zinc-500" />
                                                     <FileText v-else-if="lesson.type === 'pdf'" class="h-4 w-4 shrink-0 text-zinc-500" />
                                                     <FileText v-else class="h-4 w-4 shrink-0 text-zinc-500" />
                                                     <span class="truncate text-zinc-700 dark:text-zinc-300">{{ lesson.title || 'Sem título' }}</span>
@@ -2336,6 +2343,7 @@ const inputClass = 'block w-full rounded-lg border border-zinc-300 bg-white px-3
                                                     <option value="link">Link</option>
                                                     <option value="pdf">Material</option>
                                                     <option value="pdf_presentation">Apresentação (PDF)</option>
+                                                    <option value="pdf_reader">Leitor de PDF</option>
                                                     <option value="text">Texto</option>
                                                 </select>
                                             </div>
@@ -2370,21 +2378,31 @@ const inputClass = 'block w-full rounded-lg border border-zinc-300 bg-white px-3
                                                 <label class="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">Título do link</label>
                                                 <input v-model="modulosLessonForm.link_title" type="text" :class="inputClass" class="w-full" placeholder="Ex: Abrir material complementar" />
                                             </div>
-                                            <div v-if="modulosLessonForm.type === 'video' || modulosLessonForm.type === 'link' || modulosLessonForm.type === 'pdf' || modulosLessonForm.type === 'pdf_presentation'">
+                                            <div v-if="modulosLessonForm.type === 'video' || modulosLessonForm.type === 'link' || modulosLessonForm.type === 'pdf' || modulosLessonForm.type === 'pdf_presentation' || modulosLessonForm.type === 'pdf_reader'">
                                                 <label class="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">URL do conteúdo</label>
                                                 <input v-model="modulosLessonForm.content_url" type="url" :class="inputClass" class="w-full" placeholder="https://..." />
                                                 <p v-if="modulosLessonForm.type === 'video'" class="mt-1.5 text-xs text-zinc-500 dark:text-zinc-400">
                                                     Aceita links do YouTube, Vimeo, Wistia, Loom e outras plataformas de vídeo compatíveis.
                                                 </p>
                                             </div>
-                                            <div v-if="modulosLessonForm.type === 'pdf' || modulosLessonForm.type === 'pdf_presentation'" class="space-y-2">
+                                            <div v-if="modulosLessonForm.type === 'pdf' || modulosLessonForm.type === 'pdf_presentation' || modulosLessonForm.type === 'pdf_reader'" class="space-y-2">
                                                 <input ref="lessonPdfFileInput" type="file" accept=".pdf,application/pdf" multiple class="hidden" @change="onLessonPdfChange" />
                                                 <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                                                    {{ modulosLessonForm.type === 'pdf_presentation' ? 'Enviar arquivo (apresentação)' : 'Enviar arquivo (material)' }}
+                                                    {{
+                                                        modulosLessonForm.type === 'pdf_presentation'
+                                                            ? 'Enviar arquivo (apresentação)'
+                                                            : modulosLessonForm.type === 'pdf_reader'
+                                                              ? 'Enviar arquivo (leitor de PDF)'
+                                                              : 'Enviar arquivo (material)'
+                                                    }}
                                                 </label>
                                                 <div class="flex flex-wrap items-center gap-2">
                                                     <Button type="button" size="sm" variant="outline" :disabled="lessonPdfUploading" @click="lessonPdfFileInput?.click()">
-                                                        {{ lessonPdfUploading ? 'Enviando…' : modulosLessonForm.type === 'pdf_presentation' ? 'Selecionar PDFs' : 'Selecionar materiais' }}
+                                                        {{
+                                                            lessonPdfUploading
+                                                                ? 'Enviando…'
+                                                                : modulosLessonForm.type === 'pdf' ? 'Selecionar materiais' : 'Selecionar PDFs'
+                                                        }}
                                                     </Button>
                                                     <span v-if="(modulosLessonForm.content_files?.length ?? 0) > 0" class="text-xs text-zinc-500 dark:text-zinc-400">
                                                         {{ modulosLessonForm.content_files.length }} arquivo(s) anexado(s)
@@ -2397,7 +2415,7 @@ const inputClass = 'block w-full rounded-lg border border-zinc-300 bg-white px-3
                                                         :key="`${f.url}-${i}`"
                                                         class="flex items-center justify-between gap-2 rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-800/50"
                                                     >
-                                                        <span class="min-w-0 flex-1 truncate text-zinc-600 dark:text-zinc-300">{{ f.name || (modulosLessonForm.type === 'pdf_presentation' ? 'Apresentação' : 'Material') }}</span>
+                                                        <span class="min-w-0 flex-1 truncate text-zinc-600 dark:text-zinc-300">{{ f.name || pdfLessonFileLabel(modulosLessonForm.type) }}</span>
                                                         <button type="button" class="shrink-0 text-red-600 hover:underline" @click="removeLessonPdfAt(i)">Remover</button>
                                                     </div>
                                                 </div>
@@ -2407,7 +2425,7 @@ const inputClass = 'block w-full rounded-lg border border-zinc-300 bg-white px-3
                                                 <label class="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">Texto</label>
                                                 <textarea v-model="modulosLessonForm.content_text" :class="inputClass" class="w-full" rows="3" placeholder="Conteúdo da aula..." />
                                             </div>
-                                            <div v-if="modulosLessonForm.type === 'video' || modulosLessonForm.type === 'link' || modulosLessonForm.type === 'pdf' || modulosLessonForm.type === 'pdf_presentation'">
+                                            <div v-if="modulosLessonForm.type === 'video' || modulosLessonForm.type === 'link' || modulosLessonForm.type === 'pdf' || modulosLessonForm.type === 'pdf_presentation' || modulosLessonForm.type === 'pdf_reader'">
                                                 <label class="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">Descrição</label>
                                                 <textarea v-model="modulosLessonForm.content_text" :class="inputClass" class="w-full" rows="3" placeholder="Texto ou links para complementar a aula (opcional)..." />
                                             </div>

@@ -11,6 +11,8 @@ use App\Models\MemberCommunityPostLike;
 use App\Models\MemberActivityLog;
 use App\Models\MemberInternalProduct;
 use App\Models\MemberLesson;
+use App\Models\MemberLessonLike;
+use App\Models\MemberLessonPdfAnnotation;
 use App\Models\MemberLessonProgress;
 use App\Models\MemberModule;
 use App\Models\MemberSection;
@@ -225,6 +227,9 @@ class MemberAreaAppController extends Controller
             if ($currentLessonData['watermark_enabled']) {
                 $currentLessonData['student'] = $this->getStudentWatermarkData($user, $product);
             }
+            if ($currentLesson->type === MemberLesson::TYPE_PDF_READER) {
+                $currentLessonData = array_merge($currentLessonData, $this->pdfReaderLessonExtras($currentLesson, $user));
+            }
         }
 
         $progressPercent = $this->progressService->completionPercent($product, $user);
@@ -281,6 +286,10 @@ class MemberAreaAppController extends Controller
             'lessons' => $lessons,
             'current_lesson' => $currentLessonData,
             'progress_percent' => $progressPercent,
+            'course_lesson_progress' => [
+                'completed' => $this->progressService->completedLessonsCount($product, $user),
+                'total' => $this->progressService->totalLessonsCount($product),
+            ],
             'sections' => $sectionsPayload,
             'comments_enabled' => $commentsEnabled,
             'comments_require_approval' => $commentsRequireApproval,
@@ -362,6 +371,9 @@ class MemberAreaAppController extends Controller
         if ($lessonPayload['watermark_enabled']) {
             $lessonPayload['student'] = $this->getStudentWatermarkData($user, $product);
         }
+        if ($lesson->type === MemberLesson::TYPE_PDF_READER) {
+            $lessonPayload = array_merge($lessonPayload, $this->pdfReaderLessonExtras($lesson, $user));
+        }
         $config = $product->member_area_config;
         $commentsEnabled = (bool) ($config['comments_enabled'] ?? false);
         $commentsRequireApproval = (bool) ($config['comments_require_approval'] ?? true);
@@ -406,7 +418,7 @@ class MemberAreaAppController extends Controller
     public function presentationPdf(Request $request, string $slug, MemberLesson $lesson, int $fileIndex): SymfonyResponse
     {
         $this->assertLessonViewableForPdf($request, $lesson);
-        if ($lesson->type !== MemberLesson::TYPE_PDF_PRESENTATION) {
+        if (! in_array($lesson->type, [MemberLesson::TYPE_PDF_PRESENTATION, MemberLesson::TYPE_PDF_READER], true)) {
             abort(404);
         }
         $urls = $this->pdfPresentationSourceUrls($lesson);
@@ -437,6 +449,136 @@ class MemberAreaAppController extends Controller
             'Cache-Control' => 'private, max-age=120',
             'X-Content-Type-Options' => 'nosniff',
         ]);
+    }
+
+    /**
+     * GET — marcações do usuário no leitor PDF (por arquivo).
+     */
+    public function getLessonPdfAnnotations(Request $request, string $slug, MemberLesson $lesson): JsonResponse
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Não autenticado.'], 401);
+        }
+        $this->assertLessonViewableForPdf($request, $lesson);
+        if ($lesson->type !== MemberLesson::TYPE_PDF_READER) {
+            abort(404);
+        }
+
+        $rows = MemberLessonPdfAnnotation::query()
+            ->where('user_id', $user->id)
+            ->where('member_lesson_id', $lesson->id)
+            ->get(['file_index', 'payload']);
+
+        $byFile = [];
+        foreach ($rows as $row) {
+            $byFile[(string) $row->file_index] = is_array($row->payload) ? $row->payload : [];
+        }
+
+        return response()->json(['annotations_by_file' => $byFile]);
+    }
+
+    /**
+     * PUT — salva marcações de um arquivo PDF (lista de highlights).
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function putLessonPdfAnnotations(Request $request, string $slug, MemberLesson $lesson): JsonResponse
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Não autenticado.'], 401);
+        }
+        $this->assertLessonViewableForPdf($request, $lesson);
+        if ($lesson->type !== MemberLesson::TYPE_PDF_READER) {
+            abort(404);
+        }
+
+        $validated = $request->validate([
+            'file_index' => ['required', 'integer', 'min:0'],
+            'highlights' => ['required', 'array', 'max:500'],
+            'highlights.*.id' => ['required', 'string', 'max:64'],
+            'highlights.*.page' => ['required', 'integer', 'min:1'],
+            'highlights.*.color' => ['required', 'string', 'in:yellow,green,pink'],
+            'highlights.*.x' => ['required', 'numeric', 'min:0', 'max:1'],
+            'highlights.*.y' => ['required', 'numeric', 'min:0', 'max:1'],
+            'highlights.*.width' => ['required', 'numeric', 'min:0', 'max:1'],
+            'highlights.*.height' => ['required', 'numeric', 'min:0', 'max:1'],
+        ]);
+
+        MemberLessonPdfAnnotation::updateOrCreate(
+            [
+                'user_id' => $user->id,
+                'member_lesson_id' => $lesson->id,
+                'file_index' => $validated['file_index'],
+            ],
+            [
+                'payload' => $validated['highlights'],
+            ]
+        );
+
+        return response()->json(['success' => true]);
+    }
+
+    /**
+     * POST — alterna curtida na aula (somente tipo pdf_reader).
+     */
+    public function toggleLessonLike(Request $request, string $slug, MemberLesson $lesson): JsonResponse
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Não autenticado.'], 401);
+        }
+        $this->assertLessonViewableForPdf($request, $lesson);
+        if ($lesson->type !== MemberLesson::TYPE_PDF_READER) {
+            abort(404);
+        }
+
+        $liked = false;
+        $count = (int) ($lesson->likes_count ?? 0);
+
+        DB::transaction(function () use ($lesson, $user, &$liked, &$count): void {
+            $lessonRow = MemberLesson::query()->whereKey($lesson->id)->lockForUpdate()->first();
+            if (! $lessonRow) {
+                return;
+            }
+            $existing = MemberLessonLike::query()
+                ->where('user_id', $user->id)
+                ->where('member_lesson_id', $lesson->id)
+                ->first();
+            if ($existing) {
+                $existing->delete();
+                $lessonRow->decrement('likes_count');
+                $liked = false;
+            } else {
+                MemberLessonLike::create([
+                    'user_id' => $user->id,
+                    'member_lesson_id' => $lesson->id,
+                ]);
+                $lessonRow->increment('likes_count');
+                $liked = true;
+            }
+            $count = (int) $lessonRow->fresh()->likes_count;
+        });
+
+        return response()->json([
+            'liked' => $liked,
+            'likes_count' => $count,
+        ]);
+    }
+
+    /**
+     * @return array{likes_count: int, user_liked: bool}
+     */
+    private function pdfReaderLessonExtras(MemberLesson $lesson, User $user): array
+    {
+        return [
+            'likes_count' => (int) ($lesson->likes_count ?? 0),
+            'user_liked' => MemberLessonLike::query()
+                ->where('user_id', $user->id)
+                ->where('member_lesson_id', $lesson->id)
+                ->exists(),
+        ];
     }
 
     public function completeLesson(Request $request, string $slug, MemberLesson $lesson): JsonResponse|RedirectResponse
@@ -1005,8 +1147,13 @@ class MemberAreaAppController extends Controller
      * - Se o produto relacionado é "Link": redireciona para o endpoint deliverable.
      * - Se for área de membros: redireciona para o primeiro módulo embutido (wrapper) dentro do produto host.
      */
-    public function openRelatedProduct(Request $request, string $relatedProduct): RedirectResponse
+    public function openRelatedProduct(Request $request): RedirectResponse
     {
+        $relatedProduct = (string) $request->route('relatedProduct', '');
+        if ($relatedProduct === '') {
+            abort(404);
+        }
+
         $host = $this->getProduct($request);
         $user = $request->user();
 
@@ -1021,8 +1168,7 @@ class MemberAreaAppController extends Controller
                 : redirect()->route('member-area.login', ['slug' => $slug])->with('error', 'Faça login para acessar a área de membros.');
         }
 
-        $relatedId = ctype_digit($relatedProduct) ? (int) $relatedProduct : $relatedProduct;
-        $related = Product::find($relatedId);
+        $related = Product::query()->whereKey($relatedProduct)->first();
         if (! $related) {
             return redirect()->to($this->baseUrlForRequest($host, $request))
                 ->with('error', 'Produto relacionado não encontrado ou indisponível.');
@@ -1059,8 +1205,13 @@ class MemberAreaAppController extends Controller
      * Endpoint dedicado para abrir o deliverable de produtos do tipo "Link" a partir da área de membros.
      * Deve ser usado com target=_blank no front.
      */
-    public function openRelatedProductDeliverable(Request $request, string $relatedProduct): RedirectResponse
+    public function openRelatedProductDeliverable(Request $request): RedirectResponse
     {
+        $relatedProduct = (string) $request->route('relatedProduct', '');
+        if ($relatedProduct === '') {
+            abort(404);
+        }
+
         $host = $this->getProduct($request);
         $user = $request->user();
 
@@ -1074,11 +1225,17 @@ class MemberAreaAppController extends Controller
                 : redirect()->route('member-area.login', ['slug' => $slug])->with('error', 'Faça login para acessar a área de membros.');
         }
 
+        // Normaliza chaves numéricas: em SQLite products.id pode ser inteiro enquanto a rota envia string,
+        // e whereKey/where em FK podem falhar de forma inconsistente entre colunas inteiras vs modelo keyType string.
+        $relatedIdCandidates = array_values(array_unique(array_filter(
+            [(string) $relatedProduct, is_numeric($relatedProduct) ? (int) $relatedProduct : null],
+            static fn ($v) => $v !== null && $v !== ''
+        )));
         // 1) Tenta resolver via card/wrapper do próprio host (fonte mais confiável do contexto "paid/free")
         $anyWrapperOrCard = MemberModule::query()
             ->with('relatedProduct')
-            ->where('product_id', $host->id)
-            ->where('related_product_id', $relatedProduct)
+            ->where('product_id', $host->getKey())
+            ->whereIn('related_product_id', $relatedIdCandidates)
             ->orderBy('position')
             ->first();
 
@@ -1086,8 +1243,7 @@ class MemberAreaAppController extends Controller
 
         // 2) Fallback: resolver pelo id diretamente (não depende de ter card importado)
         if (! $related) {
-            $relatedId = ctype_digit($relatedProduct) ? (int) $relatedProduct : $relatedProduct;
-            $related = Product::find($relatedId);
+            $related = Product::query()->whereIn('id', $relatedIdCandidates)->first();
         }
 
         if (! $related) {
@@ -1105,9 +1261,7 @@ class MemberAreaAppController extends Controller
 
         // Abrir deliverable (produto tipo Link)
         if ($related->type === Product::TYPE_LINK) {
-            $config = is_array($related->checkout_config) ? $related->checkout_config : [];
-            $link = $config['deliverable_link'] ?? '';
-            $link = is_string($link) ? trim($link) : '';
+            $link = $this->resolveDeliverableLinkForLinkProduct($related);
             if ($link !== '') {
                 return str_starts_with($link, 'http://') || str_starts_with($link, 'https://')
                     ? redirect()->away($link)
@@ -1153,14 +1307,56 @@ class MemberAreaAppController extends Controller
         return $isHost ? ['module' => $moduleId] : ['slug' => $slug, 'module' => $moduleId];
     }
 
+    /**
+     * Lê deliverable_link a partir de products.checkout_config (merge com default).
+     * Prioriza o array já cast no modelo; só consulta a tabela bruta se o link continuar vazio
+     * (ex.: id string vs inteiro no SQLite, ou relação carregada sem o JSON).
+     */
+    private function resolveDeliverableLinkForLinkProduct(Product $related): string
+    {
+        $fromModel = $related->checkout_config;
+        $stored = is_array($fromModel) ? $fromModel : [];
+        $merged = array_replace_recursive(Product::defaultCheckoutConfig(), $stored);
+        $link = trim((string) ($merged['deliverable_link'] ?? ''));
+        if ($link !== '') {
+            return $link;
+        }
+
+        $ids = array_values(array_unique(array_filter(
+            [(string) $related->getKey(), is_numeric($related->getKey()) ? (int) $related->getKey() : null],
+            static fn ($v) => $v !== null && $v !== ''
+        )));
+        $row = DB::table('products')->whereIn('id', $ids)->first();
+        $stored = [];
+        if ($row && isset($row->checkout_config) && $row->checkout_config !== null) {
+            $raw = $row->checkout_config;
+            if (is_string($raw)) {
+                $decoded = json_decode($raw, true);
+                $stored = is_array($decoded) ? $decoded : [];
+            } elseif (is_array($raw)) {
+                $stored = $raw;
+            } elseif (is_object($raw)) {
+                $decoded = json_decode(json_encode($raw), true);
+                $stored = is_array($decoded) ? $decoded : [];
+            }
+        }
+        $merged = array_replace_recursive(Product::defaultCheckoutConfig(), $stored);
+
+        return trim((string) ($merged['deliverable_link'] ?? ''));
+    }
+
     private function assertEmbeddedProductLinkAccess(MemberModule $wrapper, User $user): ?RedirectResponse
     {
         if (! $wrapper->related_product_id) {
             return null;
         }
-        $hasAccess = $user->products()->where('products.id', $wrapper->related_product_id)->exists();
+        $relatedFkIds = array_values(array_unique(array_filter(
+            [(string) $wrapper->related_product_id, is_numeric($wrapper->related_product_id) ? (int) $wrapper->related_product_id : null],
+            static fn ($v) => $v !== null && $v !== ''
+        )));
+        $hasAccess = $user->products()->whereIn('products.id', $relatedFkIds)->exists();
         if (($wrapper->access_type ?? 'paid') === 'paid' && ! $hasAccess) {
-            $related = Product::find($wrapper->related_product_id);
+            $related = Product::query()->whereIn('id', $relatedFkIds)->first();
             if ($related?->checkout_slug) {
                 return redirect()->route('checkout.show', ['slug' => $related->checkout_slug])
                     ->with('error', 'Você não tem acesso a este conteúdo.');
@@ -1170,11 +1366,9 @@ class MemberAreaAppController extends Controller
 
         // If the embedded product is a "Link" deliverable, open the deliverable link instead of
         // trying to render it as member-area content (which would 404).
-        $related = Product::find($wrapper->related_product_id);
+        $related = Product::query()->whereIn('id', $relatedFkIds)->first();
         if ($related?->type === Product::TYPE_LINK) {
-            $config = is_array($related->checkout_config) ? $related->checkout_config : [];
-            $link = $config['deliverable_link'] ?? '';
-            $link = is_string($link) ? trim($link) : '';
+            $link = $this->resolveDeliverableLinkForLinkProduct($related);
             if ($link !== '') {
                 return str_starts_with($link, 'http://') || str_starts_with($link, 'https://')
                     ? redirect()->away($link)
@@ -1257,9 +1451,7 @@ class MemberAreaAppController extends Controller
             $canOpenEmbed = $embed && ($isFree || $hasAccess);
             $deliverableLink = null;
             if ($related && $related->type === Product::TYPE_LINK && ($isFree || $hasAccess)) {
-                $cfg = is_array($related->checkout_config) ? $related->checkout_config : [];
-                $raw = $cfg['deliverable_link'] ?? '';
-                $raw = is_string($raw) ? trim($raw) : '';
+                $raw = $this->resolveDeliverableLinkForLinkProduct($related);
                 $deliverableLink = $raw !== '' ? $raw : null;
             }
 

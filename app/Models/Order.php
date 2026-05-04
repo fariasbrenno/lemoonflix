@@ -121,6 +121,7 @@ class Order extends Model
         if ($this->subscriptionPlan && $this->subscriptionPlan->checkout_slug) {
             return $this->subscriptionPlan->checkout_slug;
         }
+
         return $this->product?->checkout_slug ?? '';
     }
 
@@ -138,6 +139,7 @@ class Order extends Model
             'pix_auto' => 'PIX automático',
             'card' => 'Cartão',
             'boleto' => 'Boleto',
+            'external' => 'Checkout externo',
             default => self::gatewaySlugDisplayLabel($this->gateway),
         };
     }

@@ -54,10 +54,17 @@ class AccessEmailService
         }
 
         $config = $product->checkout_config ?? [];
-        $template = array_merge(Product::defaultEmailTemplate(), $config['email_template'] ?? []);
+        $userEmailTemplate = is_array($config['email_template'] ?? null) ? $config['email_template'] : [];
+        $template = array_merge(Product::defaultEmailTemplate(), $userEmailTemplate);
         $subject = (string) ($template['subject'] ?? 'Seu acesso');
         $bodyText = (string) ($template['body_text'] ?? '');
         $bodyHtml = (string) ($template['body_html'] ?? '');
+
+        // Se o infoprodutor definiu só body_html (sem body_text no JSON salvo), não usar o body_text padrão
+        // do merge — ele sobrescreveria o HTML e quebraria placeholders como {senha} no modelo customizado.
+        if (array_key_exists('body_html', $userEmailTemplate) && ! array_key_exists('body_text', $userEmailTemplate)) {
+            $bodyText = '';
+        }
 
         // Preferir texto simples (UI). Se vazio, cai no HTML legado.
         if (trim($bodyText) !== '') {

@@ -838,7 +838,7 @@ class MemberBuilderController extends Controller
         }
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:255'],
-            'type' => ['required', 'string', 'in:video,link,pdf,pdf_presentation,text'],
+            'type' => ['required', 'string', 'in:video,link,pdf,pdf_presentation,pdf_reader,text'],
             'content_url' => ['nullable', 'string', 'max:2000'],
             'link_title' => ['nullable', 'string', 'max:255'],
             'content_files' => ['nullable', 'array', 'max:30'],
@@ -860,7 +860,7 @@ class MemberBuilderController extends Controller
             $validated['release_at_date'] = null;
         }
         $contentFiles = $this->normalizeLessonContentFiles($request->input('content_files'));
-        if (in_array($validated['type'] ?? null, [MemberLesson::TYPE_PDF, MemberLesson::TYPE_PDF_PRESENTATION], true)
+        if (in_array($validated['type'] ?? null, [MemberLesson::TYPE_PDF, MemberLesson::TYPE_PDF_PRESENTATION, MemberLesson::TYPE_PDF_READER], true)
             && empty($validated['content_url']) && count($contentFiles) > 0) {
             $validated['content_url'] = $contentFiles[0]['url'];
         }
@@ -873,7 +873,7 @@ class MemberBuilderController extends Controller
             'type' => $validated['type'],
             'content_url' => $validated['content_url'] ?? null,
             'link_title' => $validated['link_title'] ?? null,
-            'content_files' => in_array($validated['type'], [MemberLesson::TYPE_PDF, MemberLesson::TYPE_PDF_PRESENTATION], true)
+            'content_files' => in_array($validated['type'], [MemberLesson::TYPE_PDF, MemberLesson::TYPE_PDF_PRESENTATION, MemberLesson::TYPE_PDF_READER], true)
                 ? ($contentFiles !== [] ? $contentFiles : null)
                 : null,
             'release_after_days' => $validated['release_after_days'] ?? null,
@@ -898,7 +898,7 @@ class MemberBuilderController extends Controller
         $validated = $request->validate([
             'title' => ['sometimes', 'string', 'max:255'],
             'position' => ['sometimes', 'integer', 'min:0'],
-            'type' => ['sometimes', 'string', 'in:video,link,pdf,pdf_presentation,text'],
+            'type' => ['sometimes', 'string', 'in:video,link,pdf,pdf_presentation,pdf_reader,text'],
             'content_url' => ['nullable', 'string', 'max:2000'],
             'link_title' => ['nullable', 'string', 'max:255'],
             'content_files' => ['nullable', 'array', 'max:30'],
@@ -933,7 +933,7 @@ class MemberBuilderController extends Controller
         }
         $type = $validated['type'] ?? $lesson->type;
         $contentFiles = $this->normalizeLessonContentFiles($request->input('content_files'));
-        if (in_array($type, [MemberLesson::TYPE_PDF, MemberLesson::TYPE_PDF_PRESENTATION], true)) {
+        if (in_array($type, [MemberLesson::TYPE_PDF, MemberLesson::TYPE_PDF_PRESENTATION, MemberLesson::TYPE_PDF_READER], true)) {
             if (count($contentFiles) > 0) {
                 $validated['content_files'] = $contentFiles;
                 if (empty($validated['content_url'])) {
