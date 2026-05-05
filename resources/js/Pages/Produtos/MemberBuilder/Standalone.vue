@@ -2,6 +2,7 @@
 import { ref, computed, reactive, nextTick, onMounted, watch } from 'vue';
 import axios from 'axios';
 import MemberBuilderPreview from '@/components/member-builder/MemberBuilderPreview.vue';
+import RichTextEditor from '@/components/member-builder/RichTextEditor.vue';
 import Button from '@/components/ui/Button.vue';
 import Toggle from '@/components/ui/Toggle.vue';
 import {
@@ -66,6 +67,7 @@ function memberBuilderImageUploadError(e, fallbackLabel = 'imagem') {
 const csrfToken = () => document.querySelector('meta[name="csrf-token"]')?.content ?? '';
 
 const activeTab = ref('aparencia');
+const previewCollapsed = ref(false);
 const processing = ref(false);
 const heroDesktopUploading = ref(false);
 const heroDesktopFileInput = ref(null);
@@ -191,6 +193,7 @@ const loginAccessMode = computed({
 
 const currentTab = computed(() => tabs.find((t) => t.id === activeTab.value));
 const showPreview = computed(() => currentTab.value?.hasPreview ?? false);
+const expandedPreview = computed(() => showPreview.value && !previewCollapsed.value);
 const previewMode = computed(() => currentTab.value?.previewMode ?? 'area');
 
 const tabIds = tabs.map((t) => t.id);
@@ -1697,6 +1700,16 @@ const inputClass = 'block w-full rounded-lg border border-zinc-300 bg-white px-3
                 </button>
             </nav>
             <div class="flex shrink-0 items-center gap-2">
+                <button
+                    v-if="showPreview"
+                    type="button"
+                    class="hidden items-center gap-1.5 rounded-lg border border-zinc-200 px-2.5 py-1.5 text-sm text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 lg:flex"
+                    :title="previewCollapsed ? 'Expandir preview' : 'Recolher preview'"
+                    @click="previewCollapsed = !previewCollapsed"
+                >
+                    <ChevronRight class="h-4 w-4 transition" :class="previewCollapsed ? 'rotate-180' : ''" />
+                    {{ previewCollapsed ? 'Expandir preview' : 'Recolher preview' }}
+                </button>
                 <a
                     v-if="produto.member_area_url"
                     :href="produto.member_area_url"
@@ -1723,9 +1736,9 @@ const inputClass = 'block w-full rounded-lg border border-zinc-300 bg-white px-3
                 :class="[
                     'flex min-h-0 min-w-0 flex-col border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900',
                     'lg:shrink-0',
-                    showPreview ? 'lg:w-80 lg:border-b-0 lg:border-r lg:overflow-y-auto' : 'flex-1 w-full overflow-x-hidden',
-                    activeTab === 'modulos' && showPreview ? 'lg:w-[44rem]' : '',
-                    activeTab === 'modulos' && !showPreview ? 'flex-1 overflow-hidden' : '',
+                    expandedPreview ? 'lg:w-80 lg:border-b-0 lg:border-r lg:overflow-y-auto' : 'flex-1 w-full overflow-x-hidden',
+                    activeTab === 'modulos' && expandedPreview ? 'lg:w-[44rem]' : '',
+                    activeTab === 'modulos' && !expandedPreview ? 'flex-1 overflow-hidden' : '',
                 ]"
             >
                 <!-- Container rolável: garante scroll no mobile (altura limitada) -->
@@ -2423,11 +2436,25 @@ const inputClass = 'block w-full rounded-lg border border-zinc-300 bg-white px-3
                                             </div>
                                             <div v-if="modulosLessonForm.type === 'text'">
                                                 <label class="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">Texto</label>
-                                                <textarea v-model="modulosLessonForm.content_text" :class="inputClass" class="w-full" rows="3" placeholder="Conteúdo da aula..." />
+                                                <RichTextEditor
+                                                    v-model="modulosLessonForm.content_text"
+                                                    allow-media
+                                                    :upload-url="uploadUrl"
+                                                    min-height="260px"
+                                                    placeholder="Conteúdo da aula..."
+                                                />
+                                                <p class="mt-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+                                                    Permite imagens e vídeos incorporados. Colagens são limpas automaticamente para remover estilos e códigos desnecessários.
+                                                </p>
                                             </div>
                                             <div v-if="modulosLessonForm.type === 'video' || modulosLessonForm.type === 'link' || modulosLessonForm.type === 'pdf' || modulosLessonForm.type === 'pdf_presentation' || modulosLessonForm.type === 'pdf_reader'">
                                                 <label class="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">Descrição</label>
-                                                <textarea v-model="modulosLessonForm.content_text" :class="inputClass" class="w-full" rows="3" placeholder="Texto ou links para complementar a aula (opcional)..." />
+                                                <RichTextEditor
+                                                    v-model="modulosLessonForm.content_text"
+                                                    :allow-media="false"
+                                                    min-height="150px"
+                                                    placeholder="Texto ou links para complementar a aula (opcional)..."
+                                                />
                                             </div>
                                             <div v-if="modulosLessonForm.type === 'video'" class="rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-700 dark:bg-zinc-800/50">
                                                 <div class="flex items-center">
@@ -3061,9 +3088,32 @@ const inputClass = 'block w-full rounded-lg border border-zinc-300 bg-white px-3
 
             <div
                 v-if="showPreview"
-                class="hidden min-h-0 flex-1 flex-col overflow-hidden bg-zinc-200 p-4 dark:bg-zinc-900 lg:flex"
+                :class="[
+                    'hidden min-h-0 flex-col overflow-hidden bg-zinc-200 dark:bg-zinc-900 lg:flex',
+                    previewCollapsed ? 'w-12 shrink-0 border-l border-zinc-300 p-2 dark:border-zinc-800' : 'flex-1 p-4',
+                ]"
             >
-                <p class="mb-2 shrink-0 text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Preview</p>
+                <template v-if="previewCollapsed">
+                    <button
+                        type="button"
+                        class="flex h-full w-full items-center justify-center rounded-lg text-xs font-medium uppercase tracking-wide text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                        title="Expandir preview"
+                        @click="previewCollapsed = false"
+                    >
+                        <span class="-rotate-90 whitespace-nowrap">Preview</span>
+                    </button>
+                </template>
+                <template v-else>
+                <div class="mb-2 flex shrink-0 items-center justify-between gap-2">
+                    <p class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Preview</p>
+                    <button
+                        type="button"
+                        class="rounded-md px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                        @click="previewCollapsed = true"
+                    >
+                        Recolher
+                    </button>
+                </div>
                 <div class="min-h-0 flex-1 overflow-auto">
                     <MemberBuilderPreview
                         :key="previewKey"
@@ -3080,6 +3130,7 @@ const inputClass = 'block w-full rounded-lg border border-zinc-300 bg-white px-3
                         :can-issue-certificate="(configForm.member_area_config.certificate?.enabled ?? false) ? true : false"
                     />
                 </div>
+                </template>
             </div>
         </div>
 

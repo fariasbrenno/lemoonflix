@@ -190,7 +190,7 @@ class MemberBuilderController extends Controller
                             'content_files' => $l->content_files,
                             'release_after_days' => $l->release_after_days,
                             'release_at_date' => $l->release_at_date?->format('Y-m-d'),
-                            'content_text' => \App\Support\HtmlSanitizer::sanitize($l->content_text),
+                            'content_text' => \App\Support\HtmlSanitizer::sanitize($l->content_text, $l->type === MemberLesson::TYPE_TEXT),
                             'duration_seconds' => $l->duration_seconds,
                             'is_free' => $l->is_free,
                             'watermark_enabled' => (bool) ($l->watermark_enabled ?? false),
@@ -723,7 +723,7 @@ class MemberBuilderController extends Controller
                 'position' => $l->position,
                 'type' => $l->type,
                 'content_url' => $l->content_url,
-                'content_text' => \App\Support\HtmlSanitizer::sanitize($l->content_text),
+                'content_text' => \App\Support\HtmlSanitizer::sanitize($l->content_text, $l->type === MemberLesson::TYPE_TEXT),
                 'duration_seconds' => $l->duration_seconds,
                 'is_free' => $l->is_free,
                 'watermark_enabled' => (bool) ($l->watermark_enabled ?? false),
@@ -864,6 +864,12 @@ class MemberBuilderController extends Controller
             && empty($validated['content_url']) && count($contentFiles) > 0) {
             $validated['content_url'] = $contentFiles[0]['url'];
         }
+        if (array_key_exists('content_text', $validated)) {
+            $validated['content_text'] = \App\Support\HtmlSanitizer::sanitize(
+                $validated['content_text'] ?? '',
+                ($validated['type'] ?? null) === MemberLesson::TYPE_TEXT
+            );
+        }
         $max = MemberLesson::where('member_module_id', $module->id)->max('position') ?? 0;
         MemberLesson::create([
             'member_module_id' => $module->id,
@@ -946,6 +952,12 @@ class MemberBuilderController extends Controller
             if (array_key_exists('content_files', $validated)) {
                 $validated['content_files'] = null;
             }
+        }
+        if (array_key_exists('content_text', $validated)) {
+            $validated['content_text'] = \App\Support\HtmlSanitizer::sanitize(
+                $validated['content_text'] ?? '',
+                $type === MemberLesson::TYPE_TEXT
+            );
         }
         $lesson->update($validated);
         if ($request->expectsJson()) {

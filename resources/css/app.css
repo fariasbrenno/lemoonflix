@@ -106,3 +106,110 @@
         background: rgb(39 39 42); /* zinc-800 */
     }
 }
+
+@layer components {
+    .rt-btn {
+        @apply inline-flex h-8 min-w-8 items-center justify-center rounded-md px-2 text-xs font-medium text-zinc-600 transition hover:bg-white hover:text-zinc-900 disabled:pointer-events-none disabled:opacity-40 dark:text-zinc-300 dark:hover:bg-zinc-700 dark:hover:text-white;
+    }
+
+    .rich-text-editor:empty::before {
+        content: attr(data-placeholder);
+        color: rgb(113 113 122);
+        pointer-events: none;
+    }
+
+    .lesson-rich-content {
+        line-height: 1.75;
+        overflow-wrap: anywhere;
+    }
+
+    .lesson-rich-content > * + * {
+        margin-top: 0.9em;
+    }
+
+    .lesson-rich-content h1,
+    .lesson-rich-content h2,
+    .lesson-rich-content h3,
+    .lesson-rich-content h4 {
+        line-height: 1.2;
+        font-weight: 700;
+    }
+
+    .lesson-rich-content h1 {
+        font-size: 2em;
+    }
+
+    .lesson-rich-content h2 {
+        font-size: 1.6em;
+    }
+
+    .lesson-rich-content h3 {
+        font-size: 1.3em;
+    }
+
+    .lesson-rich-content h4 {
+        font-size: 1.1em;
+    }
+
+    .lesson-rich-content ul,
+    .lesson-rich-content ol {
+        padding-left: 1.4em;
+    }
+
+    .lesson-rich-content ul {
+        list-style: disc;
+    }
+
+    .lesson-rich-content ol {
+        list-style: decimal;
+    }
+
+    .lesson-rich-content a {
+        color: var(--ma-primary, var(--color-primary));
+        text-decoration: underline;
+        text-underline-offset: 2px;
+    }
+
+    .lesson-rich-content blockquote {
+        border-left: 3px solid var(--ma-primary, var(--color-primary));
+        padding-left: 1rem;
+        color: color-mix(in oklab, currentColor 78%, transparent);
+    }
+
+    .lesson-rich-content img {
+        display: block;
+        max-width: 100%;
+        height: auto;
+        border-radius: 0.75rem;
+    }
+
+    .lesson-rich-content iframe {
+        display: block;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        min-height: 220px;
+        border: 0;
+        border-radius: 0.75rem;
+        background: #000;
+    }
+
+    .lesson-rich-content [data-align='center'] {
+        text-align: center;
+    }
+
+    .lesson-rich-content [data-align='right'] {
+        text-align: right;
+    }
+
+    .lesson-rich-content [data-align='justify'] {
+        text-align: justify;
+    }
+
+    .lesson-rich-content [data-size='small'] {
+        font-size: 0.875em;
+    }
+
+    .lesson-rich-content [data-size='large'] {
+        font-size: 1.125em;
+    }
+}

@@ -69,6 +69,9 @@ export function videoEmbedUrl(url) {
  */
 export function formatLessonDescription(text) {
     if (text == null || typeof text !== 'string') return '';
+    if (/<(?:p|br|strong|em|b|i|u|s|a|ul|ol|li|h[1-4]|blockquote|pre|code|span|div|img|iframe)\b/i.test(text)) {
+        return text;
+    }
     let s = text
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
