@@ -4,8 +4,6 @@ Plataforma open source em **Laravel + Vue** para checkout, produtos digitais, á
 
 O Getfy foi pensado para infoprodutores, desenvolvedores e equipes que precisam de uma base extensível para vender produtos digitais, entregar conteúdo e administrar a jornada do cliente em um único sistema.
 
----
-
 ## ✨ Principais recursos
 
 - 🛒 Checkout para produtos digitais e assinaturas.
@@ -14,8 +12,6 @@ O Getfy foi pensado para infoprodutores, desenvolvedores e equipes que precisam 
 - 📧 Recursos de e-mail, recuperação de carrinho e entrega de acesso.
 - 📊 Gestão de produtos, vendas, clientes e configurações do sistema.
 - 🧩 Estrutura extensível para melhorias, customizações e contribuições.
-
----
 
 ## ⚡ Instalação rápida
 
@@ -29,8 +25,6 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/getfy-opensource/getfy/m
 ```
 
 - 🐳 **Docker/Hostinger:** use o arquivo `docker-compose.yml` do repositório.
-
----
 
 ## ✅ Requisitos
 
@@ -49,8 +43,6 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/getfy-opensource/getfy/m
 - Ubuntu/Debian com `apt-get`.
 - Acesso SSH com usuário `root` ou usuário com `sudo`.
 - Docker, instalado automaticamente pelo instalador quando necessário.
-
----
 
 ## 🌐 Instalação em hospedagem compartilhada
 
@@ -110,8 +102,6 @@ https://SEU_DOMINIO/cron?token=SEU_CRON_SECRET
 
 O token fica no arquivo `.env`, na variável `CRON_SECRET`.
 
----
-
 ## 🖥️ Instalação em VPS com Docker
 
 Este modo sobe a aplicação com Docker, banco, Redis e scheduler.
@@ -154,8 +144,6 @@ Opcionalmente, defina variáveis antes de instalar:
 GETFY_HTTP_PORT=8080 GETFY_DIR=/opt/getfy bash -c "$(curl -fsSL https://raw.githubusercontent.com/getfy-opensource/getfy/main/install.sh)"
 ```
 
----
-
 ## 🐳 Docker na Hostinger ou painel com Git
 
 Use este modo quando o painel permite criar uma aplicação a partir de um repositório Git.
@@ -179,8 +167,6 @@ https://SEU_DOMINIO/criar-admin
 
 > Atenção: se o painel não oferecer volumes persistentes, uploads, logs e estado de configuração podem ser perdidos em um redeploy.
 
----
-
 ## 🔄 Atualização
 
 ### VPS
@@ -197,8 +183,6 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/getfy-opensource/getfy/m
 2. Extraia o conteúdo na pasta do projeto.
 3. No painel do sistema, acesse **Configurações > Update > Rodar migration**.
 
----
-
 ## 🧯 Solução de problemas
 
 - **Erro 500 ao abrir o site:** verifique PHP 8.2+, permissões de `storage/` e `bootstrap/cache/`, e se o `.env` existe.
@@ -207,15 +191,11 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/getfy-opensource/getfy/m
 - **Rotinas automáticas não rodam:** configure o cron usando `/cron?token=...` a cada minuto.
 - **Build frontend não atualiza:** confirme se `public/build` foi gerado corretamente ou rode `npm install && npm run build` em ambiente compatível.
 
----
-
 ## 🤝 Contribuições
 
 Contribuições são bem-vindas. Antes de enviar alterações, leia o arquivo [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 Para vulnerabilidades ou problemas sensíveis de segurança, leia [`SECURITY.md`](SECURITY.md) antes de abrir uma issue pública.
-
----
 
 ## 💚 Apoie o desenvolvimento
 
@@ -224,8 +204,6 @@ Se você deseja apoiar o desenvolvimento diretamente:
 | Pix | Chave |
 |---|---|
 | Aleatória | `ce05f7d1-27db-4d46-bca5-0a80c621349a` |
-
----
 
 ## 🔗 Links oficiais
 
