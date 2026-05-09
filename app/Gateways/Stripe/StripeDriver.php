@@ -27,7 +27,7 @@ class StripeDriver implements GatewayDriver
             return false;
         }
         try {
-            $stripe = new StripeClient($secret);
+            $stripe = $this->makeStripeClient($secret);
             $stripe->balance->retrieve();
             return true;
         } catch (\Throwable $e) {
@@ -97,7 +97,7 @@ class StripeDriver implements GatewayDriver
             $returnUrl = null;
         }
 
-        $stripe = new StripeClient($secret);
+        $stripe = $this->makeStripeClient($secret);
         $params = [
             'amount' => $amountInSmallestUnit,
             'currency' => $currency,
@@ -108,6 +108,11 @@ class StripeDriver implements GatewayDriver
         ];
         if ($returnUrl !== null) {
             $params['return_url'] = $returnUrl;
+        } else {
+            // Driver opera somente como cartão; ao restringir payment_method_types,
+            // a Stripe dispensa a obrigatoriedade de return_url em confirm server-side.
+            // Ref: https://docs.stripe.com/upgrades/manage-payment-methods#update-your-payment-flows
+            $params['payment_method_types'] = ['card'];
         }
 
         try {
@@ -176,7 +181,7 @@ class StripeDriver implements GatewayDriver
             return null;
         }
         try {
-            $stripe = new StripeClient($secret);
+            $stripe = $this->makeStripeClient($secret);
             $pi = $stripe->paymentIntents->retrieve($transactionId);
             $status = $pi->status ?? null;
             if ($status === 'succeeded') {
@@ -202,5 +207,10 @@ class StripeDriver implements GatewayDriver
             return (int) round($amount);
         }
         return (int) round($amount * 100);
+    }
+
+    protected function makeStripeClient(string $secret): StripeClient
+    {
+        return new StripeClient($secret);
     }
 }
