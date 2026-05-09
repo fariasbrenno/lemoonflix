@@ -2,8 +2,6 @@
 import { ref, computed, reactive, nextTick, onMounted, watch } from 'vue';
 import axios from 'axios';
 import MemberBuilderPreview from '@/components/member-builder/MemberBuilderPreview.vue';
-import RichTextEditor from '@/components/member-builder/RichTextEditor.vue';
-import { normalizeAnchorSlug } from '@/lib/utils';
 import Button from '@/components/ui/Button.vue';
 import Toggle from '@/components/ui/Toggle.vue';
 import {
@@ -68,7 +66,6 @@ function memberBuilderImageUploadError(e, fallbackLabel = 'imagem') {
 const csrfToken = () => document.querySelector('meta[name="csrf-token"]')?.content ?? '';
 
 const activeTab = ref('aparencia');
-const previewCollapsed = ref(false);
 const processing = ref(false);
 const heroDesktopUploading = ref(false);
 const heroDesktopFileInput = ref(null);
@@ -194,7 +191,6 @@ const loginAccessMode = computed({
 
 const currentTab = computed(() => tabs.find((t) => t.id === activeTab.value));
 const showPreview = computed(() => currentTab.value?.hasPreview ?? false);
-const expandedPreview = computed(() => showPreview.value && !previewCollapsed.value);
 const previewMode = computed(() => currentTab.value?.previewMode ?? 'area');
 
 const tabIds = tabs.map((t) => t.id);
@@ -747,10 +743,8 @@ function cancelEdit() {
 }
 
 const editingSectionTitle = ref('');
-const editingSectionAnchor = ref('');
 const editingSectionCoverMode = ref('vertical');
 const editingModuleTitle = ref('');
-const editingModuleAnchor = ref('');
 const editingModuleShowTitleOnCover = ref(true);
 const editingModuleRelatedProductId = ref(null);
 const editingModuleAccessType = ref('paid');
@@ -761,7 +755,6 @@ const editingModuleReleaseAtDate = ref('');
 
 const sectionModalOpen = ref(false);
 const sectionModalTitle = ref('');
-const sectionModalAnchor = ref('');
 const sectionModalCoverMode = ref('vertical');
 const sectionModalSectionType = ref('courses');
 const sectionModalSaving = ref(false);
@@ -771,7 +764,6 @@ const moduleModalSectionId = ref(null);
 const moduleModalSectionType = ref('courses'); // courses | products | external_links
 const moduleModalCoverMode = ref('vertical'); // modo da seção: vertical | horizontal
 const moduleModalTitle = ref('');
-const moduleModalAnchor = ref('');
 const moduleModalShowTitleOnCover = ref(true);
 const moduleModalFile = ref(null);
 const moduleModalFilePreviewUrl = ref('');
@@ -786,7 +778,6 @@ const moduleModalReleaseAtDate = ref('');
 
 function openSectionEdit(section) {
     editingSectionTitle.value = section.title;
-    editingSectionAnchor.value = section.anchor ?? '';
     editingSectionCoverMode.value = section.cover_mode ?? 'vertical';
     startEditSection(section.id);
 }
@@ -794,11 +785,9 @@ function openSectionEdit(section) {
 async function saveSectionTitle() {
     const id = editingSectionId.value;
     if (!id) return;
-    editingSectionAnchor.value = normalizeAnchorSlug(editingSectionAnchor.value);
     try {
         await axios.put(`${base.value}/sections/${id}`, {
             title: editingSectionTitle.value,
-            anchor: editingSectionAnchor.value,
             cover_mode: editingSectionCoverMode.value,
         }, { headers: headers() });
         cancelEdit();
@@ -808,7 +797,6 @@ async function saveSectionTitle() {
 
 function openModuleEdit(mod) {
     editingModuleTitle.value = mod.title;
-    editingModuleAnchor.value = mod.anchor ?? '';
     editingModuleShowTitleOnCover.value = mod.show_title_on_cover !== false;
     editingModuleRelatedProductId.value = mod.related_product_id ?? null;
     editingModuleAccessType.value = mod.access_type ?? 'paid';
@@ -835,8 +823,7 @@ async function saveModuleTitle() {
     const mod = editingModule.value;
     const section = props.produto.sections?.find((s) => s.modules?.some((m) => m.id === id));
     const sectionType = section?.section_type ?? 'courses';
-    editingModuleAnchor.value = normalizeAnchorSlug(editingModuleAnchor.value);
-    const payload = { title: editingModuleTitle.value, anchor: editingModuleAnchor.value };
+    const payload = { title: editingModuleTitle.value };
     if (sectionType === 'courses') {
         payload.show_title_on_cover = editingModuleShowTitleOnCover.value;
         if (editingModuleReleaseMode.value === 'days') {
@@ -1204,7 +1191,6 @@ function sectionTypeLabel(sectionType) {
 
 function openSectionModal() {
     sectionModalTitle.value = '';
-    sectionModalAnchor.value = '';
     sectionModalCoverMode.value = 'vertical';
     sectionModalSectionType.value = 'courses';
     sectionModalOpen.value = true;
@@ -1217,12 +1203,10 @@ function closeSectionModal() {
 async function confirmNewSection() {
     const title = sectionModalTitle.value?.trim();
     if (!title) return;
-    sectionModalAnchor.value = normalizeAnchorSlug(sectionModalAnchor.value);
     sectionModalSaving.value = true;
     try {
         await axios.post(`${base.value}/sections`, {
             title,
-            anchor: sectionModalAnchor.value,
             cover_mode: sectionModalCoverMode.value,
             section_type: sectionModalSectionType.value,
         }, { headers: headers() });
@@ -1250,7 +1234,6 @@ function openModuleModal(sectionId) {
     moduleModalSectionType.value = section?.section_type ?? 'courses';
     moduleModalCoverMode.value = section?.cover_mode ?? 'vertical';
     moduleModalTitle.value = '';
-    moduleModalAnchor.value = '';
     moduleModalShowTitleOnCover.value = true;
     moduleModalRelatedProductId.value = null;
     moduleModalAccessType.value = 'paid';
@@ -1291,10 +1274,9 @@ async function confirmNewModule() {
     const sectionType = moduleModalSectionType.value;
     if (sectionType === 'products' && !moduleModalRelatedProductId.value) return;
     if (sectionType === 'external_links' && !moduleModalExternalUrl.value?.trim()) return;
-    moduleModalAnchor.value = normalizeAnchorSlug(moduleModalAnchor.value);
     moduleModalSaving.value = true;
     try {
-        let payload = { title, anchor: moduleModalAnchor.value };
+        let payload = { title };
         if (sectionType === 'courses') {
             payload.show_title_on_cover = moduleModalShowTitleOnCover.value;
             if (moduleModalReleaseMode.value === 'days') {
@@ -1715,16 +1697,6 @@ const inputClass = 'block w-full rounded-lg border border-zinc-300 bg-white px-3
                 </button>
             </nav>
             <div class="flex shrink-0 items-center gap-2">
-                <button
-                    v-if="showPreview"
-                    type="button"
-                    class="hidden items-center gap-1.5 rounded-lg border border-zinc-200 px-2.5 py-1.5 text-sm text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 lg:flex"
-                    :title="previewCollapsed ? 'Expandir preview' : 'Recolher preview'"
-                    @click="previewCollapsed = !previewCollapsed"
-                >
-                    <ChevronRight class="h-4 w-4 transition" :class="previewCollapsed ? 'rotate-180' : ''" />
-                    {{ previewCollapsed ? 'Expandir preview' : 'Recolher preview' }}
-                </button>
                 <a
                     v-if="produto.member_area_url"
                     :href="produto.member_area_url"
@@ -1751,9 +1723,9 @@ const inputClass = 'block w-full rounded-lg border border-zinc-300 bg-white px-3
                 :class="[
                     'flex min-h-0 min-w-0 flex-col border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900',
                     'lg:shrink-0',
-                    expandedPreview ? 'lg:w-80 lg:border-b-0 lg:border-r lg:overflow-y-auto' : 'flex-1 w-full overflow-x-hidden',
-                    activeTab === 'modulos' && expandedPreview ? 'lg:w-[44rem]' : '',
-                    activeTab === 'modulos' && !expandedPreview ? 'flex-1 overflow-hidden' : '',
+                    showPreview ? 'lg:w-80 lg:border-b-0 lg:border-r lg:overflow-y-auto' : 'flex-1 w-full overflow-x-hidden',
+                    activeTab === 'modulos' && showPreview ? 'lg:w-[44rem]' : '',
+                    activeTab === 'modulos' && !showPreview ? 'flex-1 overflow-hidden' : '',
                 ]"
             >
                 <!-- Container rolável: garante scroll no mobile (altura limitada) -->
@@ -1890,7 +1862,7 @@ const inputClass = 'block w-full rounded-lg border border-zinc-300 bg-white px-3
 
                     <template v-else-if="activeTab === 'header'">
                         <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Menus do header</h2>
-                        <p class="mb-4 text-xs text-zinc-500 dark:text-zinc-400">Itens exibidos no header da área de membros, ao lado da logo. O link pode ser interno (ex: /modulos), âncora (ex: /#introducao) ou externo (marque "Abrir em nova aba").</p>
+                        <p class="mb-4 text-xs text-zinc-500 dark:text-zinc-400">Itens exibidos no header da área de membros, ao lado da logo. O link pode ser interno (ex: /modulos) ou externo (marque "Abrir em nova aba").</p>
                         <div class="space-y-4">
                             <div
                                 v-for="(item, index) in headerItems"
@@ -1910,8 +1882,8 @@ const inputClass = 'block w-full rounded-lg border border-zinc-300 bg-white px-3
                                     </div>
                                     <div>
                                         <label class="mb-0.5 block text-xs font-medium text-zinc-600 dark:text-zinc-400">Link</label>
-                                        <input v-model="item.link" type="text" :class="inputClass" placeholder="Ex: /, /modulos, /#introducao ou https://..." />
-                                        <p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">Interno: use / ou /modulos. Âncora: use /#introducao. Externo: URL completa.</p>
+                                        <input v-model="item.link" type="text" :class="inputClass" placeholder="Ex: / ou /modulos ou https://..." />
+                                        <p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">Interno: use / ou /modulos. Externo: URL completa.</p>
                                     </div>
                                     <div class="flex items-center gap-2">
                                         <input
@@ -2039,11 +2011,6 @@ const inputClass = 'block w-full rounded-lg border border-zinc-300 bg-white px-3
                                             <!-- Conteúdo: edição ou visualização -->
                                             <template v-if="editingSectionId === section.id">
                                                 <input v-model="editingSectionTitle" type="text" :class="inputClass" class="!py-1.5 !text-sm min-w-0 w-full" placeholder="Título da seção" @keydown.enter="saveSectionTitle" @keydown.escape="cancelEdit" />
-                                                <div>
-                                                    <label class="mb-0.5 block text-xs font-medium text-zinc-600 dark:text-zinc-400">Âncora da seção</label>
-                                                    <input v-model="editingSectionAnchor" type="text" :class="inputClass" class="!py-1.5 !text-sm min-w-0 w-full font-mono" placeholder="introducao" @blur="editingSectionAnchor = normalizeAnchorSlug(editingSectionAnchor)" @keydown.enter="saveSectionTitle" @keydown.escape="cancelEdit" />
-                                                    <p class="mt-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">Opcional. Use no Header como /#{{ editingSectionAnchor || 'introducao' }}.</p>
-                                                </div>
                                                 <div class="space-y-1.5">
                                                     <span class="block text-xs font-medium text-zinc-600 dark:text-zinc-400">Modo de capa dos módulos</span>
                                                     <div class="flex flex-wrap items-center gap-2">
@@ -2081,7 +2048,6 @@ const inputClass = 'block w-full rounded-lg border border-zinc-300 bg-white px-3
                                             <template v-else>
                                                 <div class="flex min-w-0 items-center justify-between gap-2">
                                                     <span class="min-w-0 truncate cursor-pointer text-sm font-medium text-zinc-800 dark:text-zinc-200" @click="toggleSection(section.id)">{{ section.title }}</span>
-                                                    <span v-if="section.anchor" class="hidden shrink-0 rounded bg-sky-50 px-1.5 py-0.5 font-mono text-[10px] text-sky-700 dark:bg-sky-950/40 dark:text-sky-300 sm:inline">#{{ section.anchor }}</span>
                                                     <div class="flex shrink-0 items-center gap-1">
                                                         <button type="button" class="rounded p-1.5 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-300" title="Editar seção" @click.stop="openSectionEdit(section)"><Pencil class="h-3.5 w-3.5" /></button>
                                                         <Button size="sm" variant="outline" class="!py-1 !text-xs" @click.stop="openModuleModal(section.id)">+ Módulo</Button>
@@ -2110,7 +2076,6 @@ const inputClass = 'block w-full rounded-lg border border-zinc-300 bg-white px-3
                                                         </div>
                                                         <div class="min-w-0 flex-1 p-1.5">
                                                             <p class="truncate text-xs font-medium text-zinc-800 dark:text-zinc-200">{{ mod.title }}</p>
-                                                            <p v-if="mod.anchor" class="truncate font-mono text-[10px] text-sky-600 dark:text-sky-300">#{{ mod.anchor }}</p>
                                                             <p class="text-[10px] text-zinc-500 dark:text-zinc-400">{{ (mod.lessons?.length ?? 0) }} {{ (mod.lessons?.length ?? 0) === 1 ? 'aula' : 'aulas' }}</p>
                                                         </div>
                                                     </button>
@@ -2135,11 +2100,6 @@ const inputClass = 'block w-full rounded-lg border border-zinc-300 bg-white px-3
                                                     </div>
                                                     <div class="mb-3">
                                                         <input v-model="editingModuleTitle" type="text" :class="inputClass" class="!py-1.5 !text-sm w-full" placeholder="Título do módulo" @keydown.enter="saveModuleTitle" @keydown.escape="cancelEdit" />
-                                                    </div>
-                                                    <div class="mb-3">
-                                                        <label class="mb-0.5 block text-xs font-medium text-zinc-600 dark:text-zinc-400">Âncora do módulo</label>
-                                                        <input v-model="editingModuleAnchor" type="text" :class="inputClass" class="!py-1.5 !text-sm w-full font-mono" placeholder="modulo-1" @blur="editingModuleAnchor = normalizeAnchorSlug(editingModuleAnchor)" @keydown.enter="saveModuleTitle" @keydown.escape="cancelEdit" />
-                                                        <p class="mt-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">Opcional. Use no Header como /#{{ editingModuleAnchor || 'modulo-1' }}.</p>
                                                     </div>
                                                     <div class="mb-3">
                                                         <label class="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">Liberação</label>
@@ -2202,7 +2162,6 @@ const inputClass = 'block w-full rounded-lg border border-zinc-300 bg-white px-3
                                                         <template v-if="editingModuleId === mod.id">
                                                             <div class="flex min-w-0 flex-1 flex-col gap-2">
                                                                 <input v-model="editingModuleTitle" type="text" :class="inputClass" class="!py-1.5 !text-xs min-w-0 w-full" placeholder="Título" @keydown.enter="saveModuleTitle" @keydown.escape="cancelEdit" />
-                                                                <input v-model="editingModuleAnchor" type="text" :class="inputClass" class="!py-1.5 !text-xs min-w-0 w-full font-mono" placeholder="Âncora: produto-extra" @blur="editingModuleAnchor = normalizeAnchorSlug(editingModuleAnchor)" @keydown.enter="saveModuleTitle" @keydown.escape="cancelEdit" />
                                                                 <select v-model="editingModuleRelatedProductId" :class="inputClass" class="!py-1.5 !text-xs min-w-0 w-full">
                                                                     <option :value="null">Selecione o produto</option>
                                                                     <option v-for="p in tenant_products" :key="p.id" :value="p.id">{{ p.name }}</option>
@@ -2219,7 +2178,6 @@ const inputClass = 'block w-full rounded-lg border border-zinc-300 bg-white px-3
                                                         </template>
                                                         <template v-else>
                                                             <span class="min-w-0 flex-1 truncate text-xs font-medium text-zinc-700 dark:text-zinc-300">{{ mod.title }}</span>
-                                                            <span v-if="mod.anchor" class="hidden shrink-0 rounded bg-sky-50 px-1.5 py-0.5 font-mono text-[10px] text-sky-700 dark:bg-sky-950/40 dark:text-sky-300 sm:inline">#{{ mod.anchor }}</span>
                                                             <span class="shrink-0 truncate text-xs text-zinc-500 dark:text-zinc-400" :title="mod.related_product?.name">{{ mod.related_product?.name ?? '#' + mod.related_product_id }}</span>
                                                             <span class="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium" :class="mod.access_type === 'free' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'">{{ mod.access_type === 'free' ? 'Liberado' : 'Pago' }}</span>
                                                             <div class="flex shrink-0 items-center gap-0.5">
@@ -2269,7 +2227,6 @@ const inputClass = 'block w-full rounded-lg border border-zinc-300 bg-white px-3
                                                         <template v-if="editingModuleId === mod.id">
                                                             <div class="flex min-w-0 flex-1 flex-col gap-2">
                                                                 <input v-model="editingModuleTitle" type="text" :class="inputClass" class="!py-1.5 !text-xs min-w-0 w-full" placeholder="Título" @keydown.enter="saveModuleTitle" @keydown.escape="cancelEdit" />
-                                                                <input v-model="editingModuleAnchor" type="text" :class="inputClass" class="!py-1.5 !text-xs min-w-0 w-full font-mono" placeholder="Âncora: link-extra" @blur="editingModuleAnchor = normalizeAnchorSlug(editingModuleAnchor)" @keydown.enter="saveModuleTitle" @keydown.escape="cancelEdit" />
                                                                 <input v-model="editingModuleExternalUrl" type="url" :class="inputClass" class="!py-1.5 !text-xs min-w-0 w-full" placeholder="https://..." />
                                                                 <div class="flex flex-wrap items-center gap-2">
                                                                     <Button size="sm" class="!py-0.5 !text-xs shrink-0" @click="saveModuleTitle">Ok</Button>
@@ -2279,7 +2236,6 @@ const inputClass = 'block w-full rounded-lg border border-zinc-300 bg-white px-3
                                                         </template>
                                                         <template v-else>
                                                             <span class="min-w-0 flex-1 truncate text-xs font-medium text-zinc-700 dark:text-zinc-300">{{ mod.title }}</span>
-                                                            <span v-if="mod.anchor" class="hidden shrink-0 rounded bg-sky-50 px-1.5 py-0.5 font-mono text-[10px] text-sky-700 dark:bg-sky-950/40 dark:text-sky-300 sm:inline">#{{ mod.anchor }}</span>
                                                             <a :href="mod.external_url" target="_blank" rel="noopener" class="min-w-0 max-w-[50%] truncate text-xs text-sky-600 hover:underline dark:text-sky-400" :title="mod.external_url">{{ mod.external_url }}</a>
                                                             <div class="flex shrink-0 items-center gap-0.5">
                                                                 <button type="button" class="rounded p-1 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-700" title="Editar" @click.stop="openModuleEdit(mod)"><Pencil class="h-3 w-3" /></button>
@@ -2467,25 +2423,11 @@ const inputClass = 'block w-full rounded-lg border border-zinc-300 bg-white px-3
                                             </div>
                                             <div v-if="modulosLessonForm.type === 'text'">
                                                 <label class="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">Texto</label>
-                                                <RichTextEditor
-                                                    v-model="modulosLessonForm.content_text"
-                                                    allow-media
-                                                    :upload-url="uploadUrl"
-                                                    min-height="260px"
-                                                    placeholder="Conteúdo da aula..."
-                                                />
-                                                <p class="mt-1.5 text-xs text-zinc-500 dark:text-zinc-400">
-                                                    Permite imagens e vídeos incorporados. Colagens são limpas automaticamente para remover estilos e códigos desnecessários.
-                                                </p>
+                                                <textarea v-model="modulosLessonForm.content_text" :class="inputClass" class="w-full" rows="3" placeholder="Conteúdo da aula..." />
                                             </div>
                                             <div v-if="modulosLessonForm.type === 'video' || modulosLessonForm.type === 'link' || modulosLessonForm.type === 'pdf' || modulosLessonForm.type === 'pdf_presentation' || modulosLessonForm.type === 'pdf_reader'">
                                                 <label class="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">Descrição</label>
-                                                <RichTextEditor
-                                                    v-model="modulosLessonForm.content_text"
-                                                    :allow-media="false"
-                                                    min-height="150px"
-                                                    placeholder="Texto ou links para complementar a aula (opcional)..."
-                                                />
+                                                <textarea v-model="modulosLessonForm.content_text" :class="inputClass" class="w-full" rows="3" placeholder="Texto ou links para complementar a aula (opcional)..." />
                                             </div>
                                             <div v-if="modulosLessonForm.type === 'video'" class="rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-700 dark:bg-zinc-800/50">
                                                 <div class="flex items-center">
@@ -3119,32 +3061,9 @@ const inputClass = 'block w-full rounded-lg border border-zinc-300 bg-white px-3
 
             <div
                 v-if="showPreview"
-                :class="[
-                    'hidden min-h-0 flex-col overflow-hidden bg-zinc-200 dark:bg-zinc-900 lg:flex',
-                    previewCollapsed ? 'w-12 shrink-0 border-l border-zinc-300 p-2 dark:border-zinc-800' : 'flex-1 p-4',
-                ]"
+                class="hidden min-h-0 flex-1 flex-col overflow-hidden bg-zinc-200 p-4 dark:bg-zinc-900 lg:flex"
             >
-                <template v-if="previewCollapsed">
-                    <button
-                        type="button"
-                        class="flex h-full w-full items-center justify-center rounded-lg text-xs font-medium uppercase tracking-wide text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
-                        title="Expandir preview"
-                        @click="previewCollapsed = false"
-                    >
-                        <span class="-rotate-90 whitespace-nowrap">Preview</span>
-                    </button>
-                </template>
-                <template v-else>
-                <div class="mb-2 flex shrink-0 items-center justify-between gap-2">
-                    <p class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Preview</p>
-                    <button
-                        type="button"
-                        class="rounded-md px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
-                        @click="previewCollapsed = true"
-                    >
-                        Recolher
-                    </button>
-                </div>
+                <p class="mb-2 shrink-0 text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Preview</p>
                 <div class="min-h-0 flex-1 overflow-auto">
                     <MemberBuilderPreview
                         :key="previewKey"
@@ -3161,7 +3080,6 @@ const inputClass = 'block w-full rounded-lg border border-zinc-300 bg-white px-3
                         :can-issue-certificate="(configForm.member_area_config.certificate?.enabled ?? false) ? true : false"
                     />
                 </div>
-                </template>
             </div>
         </div>
 
@@ -3272,11 +3190,6 @@ const inputClass = 'block w-full rounded-lg border border-zinc-300 bg-white px-3
                             <input v-model="sectionModalTitle" type="text" :class="inputClass" placeholder="Título da seção" class="w-full" />
                         </div>
                         <div>
-                            <label class="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Âncora da seção</label>
-                            <input v-model="sectionModalAnchor" type="text" :class="inputClass" placeholder="introducao" class="w-full font-mono" @blur="sectionModalAnchor = normalizeAnchorSlug(sectionModalAnchor)" />
-                            <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Opcional. Aceita letras, números e hífen. Exemplo no Header: /#introducao.</p>
-                        </div>
-                        <div>
                             <label class="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Modo de capa dos módulos</label>
                             <div class="grid grid-cols-2 gap-3">
                                 <button
@@ -3327,11 +3240,6 @@ const inputClass = 'block w-full rounded-lg border border-zinc-300 bg-white px-3
                         <div>
                             <label class="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Título</label>
                             <input v-model="moduleModalTitle" type="text" :class="inputClass" placeholder="Título do módulo" class="w-full" />
-                        </div>
-                        <div>
-                            <label class="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Âncora do módulo</label>
-                            <input v-model="moduleModalAnchor" type="text" :class="inputClass" placeholder="modulo-1" class="w-full font-mono" @blur="moduleModalAnchor = normalizeAnchorSlug(moduleModalAnchor)" />
-                            <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Opcional. Se repetir uma âncora existente, o sistema cria uma variação segura.</p>
                         </div>
                         <!-- Cursos/Aulas: capa e mostrar título na capa -->
                         <template v-if="moduleModalSectionType === 'courses'">

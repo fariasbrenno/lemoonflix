@@ -213,7 +213,7 @@ function onPdfReaderLastPage() {
                         />
                         <div
                             v-if="current_lesson.content_text"
-                            class="lesson-rich-content prose prose-invert max-w-none border-t border-zinc-700 p-6"
+                            class="prose prose-invert max-w-none border-t border-zinc-700 p-6"
                             v-html="formatLessonDescription(current_lesson.content_text)"
                         />
                         <div v-if="!current_lesson.content_url && !current_lesson.content_text" class="p-8 text-center text-zinc-500">
@@ -228,14 +228,14 @@ function onPdfReaderLastPage() {
                             </a>
                         </div>
                     </template>
-                    <div v-else-if="current_lesson.type === 'link' && current_lesson.content_text" class="lesson-rich-content prose prose-invert max-w-none border-t border-zinc-700 p-6" v-html="formatLessonDescription(current_lesson.content_text)" />
+                    <div v-else-if="current_lesson.type === 'link' && current_lesson.content_text" class="prose prose-invert max-w-none border-t border-zinc-700 p-6" v-html="formatLessonDescription(current_lesson.content_text)" />
                     <template v-else-if="current_lesson.type === 'pdf_presentation' && currentPresentationFiles.length">
                         <div class="p-4">
                             <MemberPdfPresentationViewer :files="currentPresentationFiles" />
                         </div>
                         <div
                             v-if="current_lesson.content_text"
-                            class="lesson-rich-content prose prose-invert max-w-none border-t border-zinc-700 p-6"
+                            class="prose prose-invert max-w-none border-t border-zinc-700 p-6"
                             v-html="formatLessonDescription(current_lesson.content_text)"
                         />
                     </template>
@@ -253,7 +253,7 @@ function onPdfReaderLastPage() {
                         </div>
                         <div
                             v-if="current_lesson.content_text"
-                            class="lesson-rich-content prose prose-invert max-w-none border-t border-zinc-700 p-6"
+                            class="prose prose-invert max-w-none border-t border-zinc-700 p-6"
                             v-html="formatLessonDescription(current_lesson.content_text)"
                         />
                     </template>
@@ -275,9 +275,9 @@ function onPdfReaderLastPage() {
                             </div>
                         </div>
                     </template>
-                    <div v-else-if="current_lesson.type === 'pdf' && current_lesson.content_text" class="lesson-rich-content prose prose-invert max-w-none border-t border-zinc-700 p-6" v-html="formatLessonDescription(current_lesson.content_text)" />
+                    <div v-else-if="current_lesson.type === 'pdf' && current_lesson.content_text" class="prose prose-invert max-w-none border-t border-zinc-700 p-6" v-html="formatLessonDescription(current_lesson.content_text)" />
                     <template v-else-if="current_lesson.type === 'text' && current_lesson.content_text">
-                        <div class="lesson-rich-content prose prose-invert max-w-none p-6" v-html="formatLessonDescription(current_lesson.content_text)" />
+                        <div class="prose prose-invert max-w-none p-6" v-html="current_lesson.content_text" />
                     </template>
                     <template v-else>
                         <div class="p-8 text-center text-zinc-500">Conteúdo não disponível.</div>

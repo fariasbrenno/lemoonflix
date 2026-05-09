@@ -5,18 +5,6 @@ export function cn(...inputs) {
     return twMerge(clsx(inputs));
 }
 
-export function normalizeAnchorSlug(value) {
-    if (value == null) return '';
-    return String(value)
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toLowerCase()
-        .replace(/[^a-z0-9-]+/g, '-')
-        .replace(/-+/g, '-')
-        .replace(/^-|-$/g, '')
-        .slice(0, 120);
-}
-
 /**
  * Formata valor monetário em formato compacto (K = mil, M = milhão).
  * Ex: 1300 → 1.3K, 10000 → 10K, 1500000 → 1.5M
@@ -81,9 +69,6 @@ export function videoEmbedUrl(url) {
  */
 export function formatLessonDescription(text) {
     if (text == null || typeof text !== 'string') return '';
-    if (/<(?:p|br|strong|em|b|i|u|s|a|ul|ol|li|h[1-4]|blockquote|pre|code|span|div|img|iframe)\b/i.test(text)) {
-        return text;
-    }
     let s = text
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')

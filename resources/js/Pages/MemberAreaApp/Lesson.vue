@@ -150,7 +150,7 @@ function formatCommentDate(iso) {
                 />
                 <div
                     v-if="lesson.content_text"
-                    class="lesson-rich-content prose prose-invert max-w-none border-t border-zinc-700 p-6"
+                    class="prose prose-invert max-w-none border-t border-zinc-700 p-6"
                     v-html="formatLessonDescription(lesson.content_text)"
                 />
                 <div v-if="!lesson.content_url && !lesson.content_text" class="p-8 text-center text-zinc-500">
@@ -165,14 +165,14 @@ function formatCommentDate(iso) {
                     </a>
                 </div>
             </template>
-            <div v-else-if="lesson.type === 'link' && lesson.content_text" class="lesson-rich-content prose prose-invert max-w-none border-t border-zinc-700 p-6" v-html="formatLessonDescription(lesson.content_text)" />
+            <div v-else-if="lesson.type === 'link' && lesson.content_text" class="prose prose-invert max-w-none border-t border-zinc-700 p-6" v-html="formatLessonDescription(lesson.content_text)" />
             <template v-else-if="lesson.type === 'pdf_presentation' && presentationFiles.length">
                 <div class="p-4">
                     <MemberPdfPresentationViewer :files="presentationFiles" />
                 </div>
                 <div
                     v-if="lesson.content_text"
-                    class="lesson-rich-content prose prose-invert max-w-none border-t border-zinc-700 p-6"
+                    class="prose prose-invert max-w-none border-t border-zinc-700 p-6"
                     v-html="formatLessonDescription(lesson.content_text)"
                 />
             </template>
@@ -189,7 +189,7 @@ function formatCommentDate(iso) {
                 </div>
                 <div
                     v-if="lesson.content_text"
-                    class="lesson-rich-content prose prose-invert max-w-none border-t border-zinc-700 p-6"
+                    class="prose prose-invert max-w-none border-t border-zinc-700 p-6"
                     v-html="formatLessonDescription(lesson.content_text)"
                 />
             </template>
@@ -211,9 +211,9 @@ function formatCommentDate(iso) {
                     </div>
                 </div>
             </template>
-            <div v-else-if="lesson.type === 'pdf' && lesson.content_text" class="lesson-rich-content prose prose-invert max-w-none border-t border-zinc-700 p-6" v-html="formatLessonDescription(lesson.content_text)" />
+            <div v-else-if="lesson.type === 'pdf' && lesson.content_text" class="prose prose-invert max-w-none border-t border-zinc-700 p-6" v-html="formatLessonDescription(lesson.content_text)" />
             <template v-else-if="lesson.type === 'text' && lesson.content_text">
-                <div class="lesson-rich-content prose prose-invert max-w-none p-6" v-html="formatLessonDescription(lesson.content_text)" />
+                <div class="prose prose-invert max-w-none p-6" v-html="lesson.content_text" />
             </template>
             <div v-else class="p-8 text-center text-zinc-500">
                 Conteúdo não disponível.
