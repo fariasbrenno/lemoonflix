@@ -6,14 +6,20 @@ use App\Models\CheckoutSession;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\User;
+use App\Services\MetaCustomAudienceCsvService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class RelatoriosController extends Controller
 {
     private const PERIODS = ['hoje', 'ontem', '7dias', 'mes', 'ano', 'total'];
+
+    public function __construct(
+        private MetaCustomAudienceCsvService $metaCustomAudienceCsv
+    ) {}
 
     public function index(Request $request): Response
     {
@@ -150,6 +156,7 @@ class RelatoriosController extends Controller
 
         return Inertia::render('Relatorios/Index', [
             'period' => $period,
+            'meta_export_products' => $this->metaCustomAudienceCsv->productsForExportDropdown($request->user()),
             'receita_total' => round($receitaTotal, 2),
             'quantidade_vendas' => $quantidadeVendas,
             'ticket_medio' => round($ticketMedio, 2),
@@ -166,6 +173,24 @@ class RelatoriosController extends Controller
             'reembolsos_count' => $reembolsosCount,
             'reembolsos_total' => round($reembolsosTotal, 2),
         ]);
+    }
+
+    public function exportMetaCompradores(Request $request): StreamedResponse
+    {
+        $data = $request->validate([
+            'product_id' => ['required', 'string'],
+        ]);
+
+        return $this->metaCustomAudienceCsv->streamPurchasers($request->user(), $data['product_id']);
+    }
+
+    public function exportMetaAbandonos(Request $request): StreamedResponse
+    {
+        $data = $request->validate([
+            'product_id' => ['required', 'string'],
+        ]);
+
+        return $this->metaCustomAudienceCsv->streamAbandonedEngaged($request->user(), $data['product_id']);
     }
 
     private function rangeForPeriod(string $period): array

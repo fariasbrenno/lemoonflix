@@ -20,7 +20,18 @@ import { isIosDevice } from '@/utils/isIosDevice.js';
 
 const STORAGE_KEY = 'checkout_draft';
 
-const UTM_PARAM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign'];
+const ATTRIBUTION_PARAM_KEYS = [
+    'utm_source',
+    'utm_medium',
+    'utm_campaign',
+    'utm_content',
+    'utm_term',
+    'fbclid',
+    'gclid',
+    'msclkid',
+    'src',
+    'sck',
+];
 
 function utmStorageKey() {
     return `getfy_checkout_utm_${String(props.productId)}`;
@@ -30,11 +41,25 @@ function readUtmsFromUrl() {
     if (typeof window === 'undefined') return {};
     const p = new URLSearchParams(window.location.search);
     const o = {};
-    UTM_PARAM_KEYS.forEach((k) => {
+    ATTRIBUTION_PARAM_KEYS.forEach((k) => {
         const v = p.get(k);
         if (v != null && String(v).trim() !== '') o[k] = String(v).trim();
     });
     return o;
+}
+
+function readFbpFbcFromCookies() {
+    if (typeof document === 'undefined' || !document.cookie) return {};
+    const out = {};
+    const read = (name) => {
+        const m = document.cookie.match(new RegExp(`(?:^|; )${name.replace(/([.$?*|{}()[\]\\/+^])/g, '\\$1')}=([^;]*)`));
+        return m ? decodeURIComponent(m[1]) : '';
+    };
+    const fbp = read('_fbp');
+    const fbc = read('_fbc');
+    if (fbp) out.fbp = fbp.slice(0, 512);
+    if (fbc) out.fbc = fbc.slice(0, 512);
+    return out;
 }
 
 function mergeStoredUtms() {
@@ -63,15 +88,32 @@ function getUtmPayload() {
         /* ignore */
     }
     const out = {};
-    UTM_PARAM_KEYS.forEach((k) => {
+    ATTRIBUTION_PARAM_KEYS.forEach((k) => {
         if (m[k]) out[k] = m[k];
     });
     return out;
 }
 
 function appendUtms(payload) {
-    Object.assign(payload, getUtmPayload());
+    Object.assign(payload, getUtmPayload(), readFbpFbcFromCookies());
     return payload;
+}
+
+function buildPurchaseContentsForPixel() {
+    const mainPrice = Math.round((Number(props.mainLinePriceBrl) || 0) * 100) / 100;
+    const items = [{ id: String(props.productId), quantity: 1, item_price: mainPrice }];
+    const ids = new Set(Array.isArray(props.orderBumpIds) ? props.orderBumpIds : []);
+    const bumps = Array.isArray(props.orderBumps) ? props.orderBumps : [];
+    bumps.forEach((b) => {
+        if (!b || !ids.has(b.id)) return;
+        const price = Math.round((Number(b.amount_brl) || 0) * 100) / 100;
+        items.push({
+            id: String(b.target_product_id),
+            quantity: 1,
+            item_price: price,
+        });
+    });
+    return items;
 }
 
 function getCsrfToken() {
@@ -156,6 +198,8 @@ const props = defineProps({
     cardMercadopagoSandbox: { type: Boolean, default: false },
     /** Chaves por gateway slug para gateways de plugin (checkout_payload_keys). Ex.: { 'meu-gateway': { publishable_key: '...' } } */
     cardGatewayKeys: { type: Object, default: () => ({}) },
+    /** Preço BRL só do produto principal (sem bumps), para contents do pixel. */
+    mainLinePriceBrl: { type: Number, default: 0 },
 });
 
 const emit = defineEmits(['coupon-applied', 'coupon-cleared', 'update:orderBumpIds', 'payment-approved']);
@@ -952,6 +996,25 @@ async function pollCajuPayOrderStatus() {
             stopCajuPayPolling();
             cardApproved.value = true;
             cajupayApprovedRedirectUrl.value = data.redirect_url;
+            const oid = data.order_id;
+            if (oid) {
+                const metaId =
+                    typeof data.meta_purchase_event_id === 'string' && data.meta_purchase_event_id
+                        ? data.meta_purchase_event_id
+                        : `getfy_purchase_${oid}`;
+                const contents =
+                    Array.isArray(data.purchase_contents) && data.purchase_contents.length > 0
+                        ? data.purchase_contents
+                        : buildPurchaseContentsForPixel();
+                emit('payment-approved', {
+                    order_id: oid,
+                    amount: props.checkoutTotalBrl || 0,
+                    currency: 'BRL',
+                    method: form.payment_method || 'card',
+                    meta_event_id: metaId,
+                    purchase_contents: contents,
+                });
+            }
             setTimeout(() => visitPostCheckoutUrl(data.redirect_url), 1200);
             return;
         }
@@ -1935,6 +1998,8 @@ function submit() {
                                 amount: props.checkoutTotalBrl || 0,
                                 currency: 'BRL',
                                 method: 'card',
+                                meta_event_id: `getfy_purchase_${data.order_id}`,
+                                purchase_contents: buildPurchaseContentsForPixel(),
                             });
                         }
                         cardApproved.value = true;
@@ -1953,6 +2018,8 @@ function submit() {
                             amount: props.checkoutTotalBrl || 0,
                             currency: 'BRL',
                             method: 'card',
+                            meta_event_id: `getfy_purchase_${data.order_id}`,
+                            purchase_contents: buildPurchaseContentsForPixel(),
                         });
                         cardApproved.value = true;
                         cardApprovedRedirectUrl.value = fallback;
@@ -2416,20 +2483,14 @@ function submit() {
                     </div>
                 </div>
                 <p v-if="cajupayPolling" class="text-xs text-gray-500">Aguardando confirmação do pagamento…</p>
-                <template v-if="isCajuPayWalletSdk">
-                    <p class="mt-2 text-center text-sm text-gray-600">
-                        Conclua o pagamento pelo botão
-                        {{ form.payment_method === 'apple_pay' ? 'Apple Pay' : 'Google Pay' }}
-                        acima. Não é necessário usar o botão principal do checkout.
-                    </p>
-                    <button
-                        type="button"
-                        class="mt-2 w-full text-center text-xs font-medium text-gray-500 underline decoration-gray-400 hover:text-gray-700"
-                        @click="submitCajuPaySdkFlow(form.payment_method)"
-                    >
-                        Pagamento não concluiu? Tentar novamente
-                    </button>
-                </template>
+                <button
+                    v-if="isCajuPayWalletSdk"
+                    type="button"
+                    class="mt-2 w-full text-center text-xs font-medium text-gray-500 underline decoration-gray-400 hover:text-gray-700"
+                    @click="submitCajuPaySdkFlow(form.payment_method)"
+                >
+                    Pagamento não concluiu? Tentar novamente
+                </button>
             </div>
 
             <!-- Formulário de cartão (Stripe Elements ou campos Efí) -->

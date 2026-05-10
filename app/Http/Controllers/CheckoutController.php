@@ -27,14 +27,18 @@ use App\Services\StorageService;
 use App\Services\PaymentService;
 use App\Services\PushinPayPixRecorrenteService;
 use App\Support\CheckoutCardContract;
+use App\Support\CheckoutCustomPriceByCurrency;
+use App\Support\CheckoutPaymentMethodOrder;
 use App\Support\CheckoutTranslations;
 use App\Support\FakeConsumerData;
+use App\Support\MetaPurchaseTracking;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -208,10 +212,22 @@ class CheckoutController extends Controller
         }
 
         $geo = new GeoIp;
-        $suggestions = $geo->getSuggestionsForIp(request()->ip());
+        $suggestions = $geo->getSuggestionsForRequest($request);
         $payload['suggested_locale'] = $suggestions['suggested_locale'];
         $payload['suggested_currency'] = $suggestions['suggested_currency'];
         $payload['suggested_country_code'] = $suggestions['country_code'] ?? null;
+
+        $force = $config['checkout_force'] ?? [];
+        if (! empty($force['enabled']) && is_array($force)) {
+            $fl = isset($force['locale']) ? trim((string) $force['locale']) : '';
+            $fc = isset($force['currency']) ? strtoupper(trim((string) $force['currency'])) : '';
+            if (in_array($fl, ['pt_BR', 'en', 'es'], true)) {
+                $payload['suggested_locale'] = $fl;
+            }
+            if ($fc !== '') {
+                $payload['suggested_currency'] = $fc;
+            }
+        }
 
         $tenantId = $product->tenant_id;
         $defaultTranslations = config('checkout_translations');
@@ -228,7 +244,23 @@ class CheckoutController extends Controller
         $payload['currencies'] = is_array($currencies) ? $currencies : config('products.currencies');
 
         $payload['product'] = $this->addPricesInCurrencies($productArray, $payload['currencies']);
-        $payload['available_payment_methods'] = $this->buildAvailablePaymentMethods($product, $resolved['plan'] ?? null, $config);
+        $paymentOrderCountry = $payload['suggested_country_code'] ?? null;
+        $forcedCur = isset($force['currency']) ? strtoupper(trim((string) ($force['currency'] ?? ''))) : '';
+        if (! empty($force['enabled']) && $forcedCur !== '' && $forcedCur !== 'BRL') {
+            $paymentOrderCountry = 'US';
+        }
+        $payload['available_payment_methods'] = CheckoutPaymentMethodOrder::applyForCountry(
+            $this->buildAvailablePaymentMethods($product, $resolved['plan'] ?? null, $config),
+            $paymentOrderCountry
+        );
+        $payload['product']['custom_display_prices_by_currency'] = $this->customDisplayPricesMap($product);
+        $productCheckout = $product->checkout_config ?? [];
+        $payload['product']['checkout_config'] = [
+            'checkout_force' => array_replace_recursive(
+                Product::defaultCheckoutConfig()['checkout_force'] ?? ['enabled' => false, 'locale' => null, 'currency' => null],
+                is_array($productCheckout['checkout_force'] ?? null) ? $productCheckout['checkout_force'] : []
+            ),
+        ];
         $payload['card_payee_code'] = '';
         $payload['card_efi_sandbox'] = false;
         $payload['card_stripe_publishable_key'] = '';
@@ -359,6 +391,8 @@ class CheckoutController extends Controller
             }
         }
 
+        $trackingMeta = $this->extractTrackingMetadataFromRequest($request);
+
         CheckoutSession::create([
             'tenant_id' => $product->tenant_id,
             'product_id' => $product->id,
@@ -371,6 +405,7 @@ class CheckoutController extends Controller
             'utm_source' => $utmSource,
             'utm_medium' => $utmMedium,
             'utm_campaign' => $utmCampaign,
+            'tracking_metadata' => $trackingMeta === [] ? null : $trackingMeta,
         ]);
         $payload['checkout_session_token'] = $sessionToken;
 
@@ -473,6 +508,10 @@ class CheckoutController extends Controller
         $phoneRequiredForCheckout = ($customerFields['phone'] ?? false)
             || ($paymentMethodForRules === 'pix' && $firstPixGateway === 'pagarme');
 
+        $allowedDisplayCurrencies = CheckoutCustomPriceByCurrency::currencyCodesFromTenantSettings(
+            $this->tenantCurrenciesListFor($product->tenant_id)
+        );
+
         $rules = [
             'product_id' => ['required', 'exists:products,id'],
             'product_offer_id' => ['nullable', 'exists:product_offers,id'],
@@ -482,7 +521,7 @@ class CheckoutController extends Controller
             'payment_method' => ['required', 'string', 'in:pix,card,boleto,pix_auto,apple_pay,google_pay'],
             'checkout_session_token' => ['nullable', 'string', 'max:64'],
             'idempotency_key' => ['nullable', 'string', 'max:128'],
-            'display_currency' => ['nullable', 'string', 'in:BRL,USD,EUR'],
+            'display_currency' => ['nullable', 'string', 'max:8', Rule::in($allowedDisplayCurrencies)],
             'email' => ['required', 'email'],
             'name' => [($customerFields['name'] ?? true) ? 'required' : 'nullable', 'string', 'max:255'],
             'cpf' => [$requireCpf ? 'required' : 'nullable', 'string', 'max:11'],
@@ -492,6 +531,7 @@ class CheckoutController extends Controller
             'utm_medium' => ['nullable', 'string', 'max:255'],
             'utm_campaign' => ['nullable', 'string', 'max:255'],
         ];
+        $rules = array_merge($rules, $this->checkoutAttributionValidationRules());
         if ($request->input('payment_method') === 'card') {
             $firstCardGateway = $firstCardGatewayForRules ?? $paymentService->getFirstAvailableGatewayForMethod($product->tenant_id, 'card', $product);
             if ($firstCardGateway === 'asaas') {
@@ -578,6 +618,18 @@ class CheckoutController extends Controller
             $rates = config('products.rates');
             $amount = $currency === 'EUR' ? $amount / ($rates['brl_eur'] ?? 0.16) : $amount / ($rates['brl_usd'] ?? 0.18);
         }
+
+        $displayCurrency = is_string($validated['display_currency'] ?? null) && $validated['display_currency'] !== ''
+            ? strtoupper((string) $validated['display_currency'])
+            : $effectiveCurrency;
+        $amount = CheckoutCustomPriceByCurrency::amountBrlFromCustomIfApplicable(
+            $product,
+            $offer,
+            $plan,
+            $amount,
+            $displayCurrency,
+            $this->tenantCurrenciesListFor($product->tenant_id)
+        );
 
         $orderBumpIds = array_values(array_filter(array_map('intval', $validated['order_bump_ids'] ?? [])));
         $selectedBumps = collect();
@@ -705,22 +757,26 @@ class CheckoutController extends Controller
 
         $updateCheckoutSession = function (Order $order) use ($validated) {
             $utmFromRequest = $this->utmPayloadFromValidated($validated);
+            $trackingFromRequest = $this->trackingPayloadFromValidated($validated);
             $token = $validated['checkout_session_token'] ?? null;
             if ($token) {
                 $session = CheckoutSession::where('session_token', $token)->first();
                 if ($session) {
                     $mergedUtms = $this->mergeSessionUtms($session, $utmFromRequest);
+                    $mergedTracking = $this->mergeSessionTrackingMetadata($session, $trackingFromRequest);
                     $session->update(array_merge([
                         'step' => CheckoutSession::STEP_CONVERTED,
                         'order_id' => $order->id,
-                    ], $mergedUtms));
+                    ], $mergedUtms, ['tracking_metadata' => $mergedTracking]));
                     $this->persistOrderUtms($order, $mergedUtms);
+                    $this->persistOrderTrackingMetadata($order, $mergedTracking);
                     $order->syncUtmMetadataFromCheckoutSession();
 
                     return;
                 }
             }
             $this->persistOrderUtms($order, $utmFromRequest);
+            $this->persistOrderTrackingMetadata($order, $trackingFromRequest);
         };
 
         if ($paymentMethod === 'pix') {
@@ -1340,6 +1396,10 @@ class CheckoutController extends Controller
             return response()->json(['message' => 'Produto não encontrado.'], 404);
         }
 
+        $allowedDisplayCurrencies = CheckoutCustomPriceByCurrency::currencyCodesFromTenantSettings(
+            $this->tenantCurrenciesListFor($product->tenant_id)
+        );
+
         $rules = [
             'product_id' => ['required', 'exists:products,id'],
             'product_offer_id' => ['nullable', 'exists:product_offers,id'],
@@ -1348,12 +1408,13 @@ class CheckoutController extends Controller
             'order_bump_ids.*' => ['integer', 'exists:product_order_bumps,id'],
             'payment_method' => ['required', 'string', 'in:card,apple_pay,google_pay'],
             'checkout_session_token' => ['nullable', 'string', 'max:64'],
-            'display_currency' => ['nullable', 'string', 'in:BRL,USD,EUR'],
+            'display_currency' => ['nullable', 'string', 'max:8', Rule::in($allowedDisplayCurrencies)],
             'coupon_code' => ['nullable', 'string', 'max:64'],
             'utm_source' => ['nullable', 'string', 'max:255'],
             'utm_medium' => ['nullable', 'string', 'max:255'],
             'utm_campaign' => ['nullable', 'string', 'max:255'],
         ];
+        $rules = array_merge($rules, $this->checkoutAttributionValidationRules());
         $validated = $request->validate($rules);
 
         try {
@@ -1472,7 +1533,7 @@ class CheckoutController extends Controller
      */
     public function cajupayConfirmOrder(Request $request): JsonResponse
     {
-        $validated = $request->validate([
+        $validated = $request->validate(array_merge([
             'polling_token' => ['required', 'string', 'size:32'],
             'email' => ['required', 'email'],
             'name' => ['nullable', 'string', 'max:255'],
@@ -1481,7 +1542,7 @@ class CheckoutController extends Controller
             'utm_source' => ['nullable', 'string', 'max:255'],
             'utm_medium' => ['nullable', 'string', 'max:255'],
             'utm_campaign' => ['nullable', 'string', 'max:255'],
-        ]);
+        ], $this->checkoutAttributionValidationRules()));
 
         $draftKey = 'cajupay_draft.' . $validated['polling_token'];
         $draft = Cache::get($draftKey);
@@ -1586,21 +1647,25 @@ class CheckoutController extends Controller
     private function updateCheckoutSessionForOrder(Order $order, array $validated): void
     {
         $utmFromRequest = $this->utmPayloadFromValidated($validated);
+        $trackingFromRequest = $this->trackingPayloadFromValidated($validated);
         $token = $validated['checkout_session_token'] ?? null;
         if ($token) {
             $session = CheckoutSession::where('session_token', $token)->first();
             if ($session) {
                 $mergedUtms = $this->mergeSessionUtms($session, $utmFromRequest);
+                $mergedTracking = $this->mergeSessionTrackingMetadata($session, $trackingFromRequest);
                 $session->update(array_merge([
                     'step' => CheckoutSession::STEP_CONVERTED,
                     'order_id' => $order->id,
-                ], $mergedUtms));
+                ], $mergedUtms, ['tracking_metadata' => $mergedTracking]));
                 $this->persistOrderUtms($order, $mergedUtms);
+                $this->persistOrderTrackingMetadata($order, $mergedTracking);
                 $order->syncUtmMetadataFromCheckoutSession();
                 return;
             }
         }
         $this->persistOrderUtms($order, $utmFromRequest);
+        $this->persistOrderTrackingMetadata($order, $trackingFromRequest);
     }
 
     /**
@@ -1633,6 +1698,25 @@ class CheckoutController extends Controller
             $rates = config('products.rates');
             $amount = $currency === 'EUR' ? $amount / ($rates['brl_eur'] ?? 0.16) : $amount / ($rates['brl_usd'] ?? 0.18);
         }
+
+        $effectiveCurrency = strtoupper((string) ($product->currency ?? 'BRL'));
+        if ($offer) {
+            $effectiveCurrency = strtoupper((string) ($offer->getCurrencyOrDefault() ?? 'BRL'));
+        } elseif ($plan) {
+            $effectiveCurrency = strtoupper((string) ($plan->getCurrencyOrDefault() ?? 'BRL'));
+        }
+        $displayCurrencyInput = $validated['display_currency'] ?? null;
+        $displayCurrency = is_string($displayCurrencyInput) && $displayCurrencyInput !== ''
+            ? strtoupper((string) $displayCurrencyInput)
+            : $effectiveCurrency;
+        $amount = CheckoutCustomPriceByCurrency::amountBrlFromCustomIfApplicable(
+            $product,
+            $offer,
+            $plan,
+            $amount,
+            $displayCurrency,
+            $this->tenantCurrenciesListFor($product->tenant_id)
+        );
 
         $orderBumpIds = array_values(array_filter(array_map('intval', $validated['order_bump_ids'] ?? [])));
         $selectedBumps = collect();
@@ -1848,6 +1932,25 @@ class CheckoutController extends Controller
             $amount = $currency === 'EUR' ? $amount / ($rates['brl_eur'] ?? 0.16) : $amount / ($rates['brl_usd'] ?? 0.18);
         }
 
+        $effectiveCurrency = strtoupper((string) ($product->currency ?? 'BRL'));
+        if ($offer) {
+            $effectiveCurrency = strtoupper((string) ($offer->getCurrencyOrDefault() ?? 'BRL'));
+        } elseif ($plan) {
+            $effectiveCurrency = strtoupper((string) ($plan->getCurrencyOrDefault() ?? 'BRL'));
+        }
+        $displayCurrencyInput = $validated['display_currency'] ?? null;
+        $displayCurrency = is_string($displayCurrencyInput) && $displayCurrencyInput !== ''
+            ? strtoupper((string) $displayCurrencyInput)
+            : $effectiveCurrency;
+        $amount = CheckoutCustomPriceByCurrency::amountBrlFromCustomIfApplicable(
+            $product,
+            $offer,
+            $plan,
+            $amount,
+            $displayCurrency,
+            $this->tenantCurrenciesListFor($product->tenant_id)
+        );
+
         $orderBumpIds = array_values(array_filter(array_map('intval', $validated['order_bump_ids'] ?? [])));
         $selectedBumps = collect();
         if ($orderBumpIds) {
@@ -2009,7 +2112,7 @@ class CheckoutController extends Controller
         }
 
         $orderId = (int) ($stored['order_id'] ?? 0);
-        $order = Order::with('product', 'productOffer', 'subscriptionPlan')->find($orderId);
+        $order = Order::with('product', 'productOffer', 'subscriptionPlan', 'orderItems')->find($orderId);
         if (! $order || $order->status !== 'pending') {
             session()->forget('pix_display.' . $token);
             $slug = $order ? $order->getCheckoutSlug() : null;
@@ -2052,6 +2155,8 @@ class CheckoutController extends Controller
             'created_at' => $createdAt,
             'expiry_seconds' => self::PIX_EXPIRY_SECONDS,
             'conversion_pixels' => $conversionPixels,
+            'meta_purchase_event_id' => MetaPurchaseTracking::purchaseEventId($order->id),
+            'purchase_contents' => MetaPurchaseTracking::purchaseContentsFromOrder($order, false),
         ]);
     }
 
@@ -2073,7 +2178,7 @@ class CheckoutController extends Controller
         }
 
         $orderId = (int) ($stored['order_id'] ?? 0);
-        $order = Order::with('product', 'productOffer', 'subscriptionPlan')->find($orderId);
+        $order = Order::with('product', 'productOffer', 'subscriptionPlan', 'orderItems')->find($orderId);
         if (! $order || $order->status !== 'pending') {
             session()->forget('boleto_display.' . $token);
             $slug = $order ? $order->getCheckoutSlug() : null;
@@ -2106,6 +2211,8 @@ class CheckoutController extends Controller
             'customer_email' => $stored['customer_email'] ?? null,
             'customer_phone' => $stored['customer_phone'] ?? null,
             'conversion_pixels' => $conversionPixels,
+            'meta_purchase_event_id' => MetaPurchaseTracking::purchaseEventId($order->id),
+            'purchase_contents' => MetaPurchaseTracking::purchaseContentsFromOrder($order, false),
         ]);
     }
 
@@ -2131,7 +2238,7 @@ class CheckoutController extends Controller
         }
 
         $orderId = (int) ($stored['order_id'] ?? 0);
-        $order = Order::with('product', 'productOffer', 'subscriptionPlan')->find($orderId);
+        $order = Order::with('product', 'productOffer', 'subscriptionPlan', 'orderItems')->find($orderId);
         if (! $order) {
             return response()->json(['status' => 'not_found'], 404);
         }
@@ -2207,10 +2314,17 @@ class CheckoutController extends Controller
             }
         }
 
-        return response()->json([
+        $payload = [
             'status' => $status,
             'redirect_url' => $redirectUrl,
-        ]);
+        ];
+        if ($status === 'completed') {
+            $payload['order_id'] = $order->id;
+            $payload['meta_purchase_event_id'] = MetaPurchaseTracking::purchaseEventId($order->id);
+            $payload['purchase_contents'] = MetaPurchaseTracking::purchaseContentsFromOrder($order, false);
+        }
+
+        return response()->json($payload);
     }
 
     /**
@@ -2374,6 +2488,48 @@ class CheckoutController extends Controller
     }
 
     /**
+     * @return array<string, float>
+     */
+    private function customDisplayPricesMap(Product $product): array
+    {
+        $cfg = $product->checkout_config['custom_prices_by_currency'] ?? [];
+        if (! is_array($cfg) || empty($cfg['enabled'])) {
+            return [];
+        }
+        $amounts = $cfg['amounts'] ?? [];
+        if (! is_array($amounts)) {
+            return [];
+        }
+        $out = [];
+        foreach ($amounts as $k => $v) {
+            $code = strtoupper(trim((string) $k));
+            if ($code === '' || $code === 'BRL') {
+                continue;
+            }
+            $f = (float) $v;
+            if ($f < 0.01) {
+                continue;
+            }
+            $out[$code] = round($f, 2);
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function tenantCurrenciesListFor(?int $tenantId): array
+    {
+        $currenciesRaw = Setting::get('currencies', null, $tenantId);
+        $currencies = $currenciesRaw
+            ? (is_string($currenciesRaw) ? json_decode($currenciesRaw, true) : $currenciesRaw)
+            : config('products.currencies');
+
+        return is_array($currencies) ? $currencies : (array) config('products.currencies');
+    }
+
+    /**
      * Armazena resposta de sucesso no cache de idempotência (24h) e retorna a resposta.
      * Evita pedidos duplicados em caso de duplo clique ou replay.
      */
@@ -2410,6 +2566,133 @@ class CheckoutController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * Campos extras de atribuição (UTMify / Meta / ads).
+     *
+     * @return array<string, array<int, string>>
+     */
+    private function checkoutAttributionValidationRules(): array
+    {
+        return [
+            'utm_content' => ['nullable', 'string', 'max:512'],
+            'utm_term' => ['nullable', 'string', 'max:512'],
+            'fbclid' => ['nullable', 'string', 'max:512'],
+            'gclid' => ['nullable', 'string', 'max:512'],
+            'msclkid' => ['nullable', 'string', 'max:512'],
+            'src' => ['nullable', 'string', 'max:512'],
+            'sck' => ['nullable', 'string', 'max:512'],
+            'fbp' => ['nullable', 'string', 'max:512'],
+            'fbc' => ['nullable', 'string', 'max:512'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function trackingPayloadFromValidated(array $validated): array
+    {
+        $out = [];
+        foreach (array_keys($this->checkoutAttributionValidationRules()) as $k) {
+            $v = isset($validated[$k]) ? trim((string) $validated[$k]) : '';
+            if ($v !== '') {
+                $out[$k] = mb_substr($v, 0, 512);
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Primeira visita ao checkout: captura parâmetros da URL e do referer.
+     *
+     * @return array<string, string>
+     */
+    private function extractTrackingMetadataFromRequest(Request $request): array
+    {
+        $keys = array_keys($this->checkoutAttributionValidationRules());
+        $out = [];
+        foreach ($keys as $k) {
+            $v = $request->query($k);
+            if (is_string($v) && trim($v) !== '') {
+                $out[$k] = mb_substr(trim($v), 0, 512);
+            }
+        }
+
+        $referer = $request->headers->get('referer');
+        if (is_string($referer) && $referer !== '') {
+            try {
+                $u = parse_url($referer);
+                $query = [];
+                if (! empty($u['query'])) {
+                    parse_str((string) $u['query'], $query);
+                }
+                foreach ($keys as $k) {
+                    if (isset($out[$k])) {
+                        continue;
+                    }
+                    $qv = $query[$k] ?? null;
+                    if (is_string($qv) && trim($qv) !== '') {
+                        $out[$k] = mb_substr(trim($qv), 0, 512);
+                    }
+                }
+            } catch (\Throwable) {
+                // ignore
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, string>  $fromRequest
+     * @return array<string, string>
+     */
+    private function mergeSessionTrackingMetadata(CheckoutSession $session, array $fromRequest): array
+    {
+        $base = is_array($session->tracking_metadata) ? $session->tracking_metadata : [];
+        $out = [];
+        foreach ($base as $k => $v) {
+            if (is_string($k) && (is_string($v) || is_numeric($v))) {
+                $s = trim((string) $v);
+                if ($s !== '') {
+                    $out[$k] = mb_substr($s, 0, 512);
+                }
+            }
+        }
+        foreach ($fromRequest as $k => $v) {
+            if (is_string($v) && trim($v) !== '') {
+                $out[$k] = mb_substr(trim($v), 0, 512);
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, string>  $tracking
+     */
+    private function persistOrderTrackingMetadata(Order $order, array $tracking): void
+    {
+        if ($tracking === []) {
+            return;
+        }
+        $meta = $order->metadata ?? [];
+        $changed = false;
+        foreach ($tracking as $k => $v) {
+            if (! is_string($v) || trim($v) === '') {
+                continue;
+            }
+            $v = trim($v);
+            if (($meta[$k] ?? null) !== $v) {
+                $meta[$k] = $v;
+                $changed = true;
+            }
+        }
+        if ($changed) {
+            $order->update(['metadata' => $meta]);
+        }
     }
 
     /**

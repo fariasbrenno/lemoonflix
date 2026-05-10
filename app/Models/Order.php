@@ -94,9 +94,51 @@ class Order extends Model
                 $changed = true;
             }
         }
+
+        $trackingMeta = $session->tracking_metadata;
+        if (is_array($trackingMeta)) {
+            foreach ($trackingMeta as $k => $v) {
+                if (! is_string($k) || $k === '') {
+                    continue;
+                }
+                if (! is_string($v) && ! is_numeric($v)) {
+                    continue;
+                }
+                $str = trim((string) $v);
+                if ($str === '') {
+                    continue;
+                }
+                if (($meta[$k] ?? null) !== $str) {
+                    $meta[$k] = $str;
+                    $changed = true;
+                }
+            }
+        }
+
         if ($changed) {
             $this->update(['metadata' => $meta]);
         }
+    }
+
+    /**
+     * Pixels de conversão: aplicação API substitui o bloco do produto quando o pedido veio do Checkout Pro.
+     *
+     * @return array<string, mixed>
+     */
+    public function resolvedConversionPixels(): array
+    {
+        $defaults = Product::defaultConversionPixels();
+
+        if ($this->api_application_id) {
+            $this->loadMissing('apiApplication');
+            if ($this->apiApplication && is_array($this->apiApplication->conversion_pixels)) {
+                return $this->apiApplication->conversion_pixels;
+            }
+        }
+
+        return $this->product
+            ? ($this->product->conversion_pixels ?? $defaults)
+            : $defaults;
     }
 
     /**
@@ -138,7 +180,10 @@ class Order extends Model
             'pix' => 'PIX',
             'pix_auto' => 'PIX automático',
             'card' => 'Cartão',
+            'apple_pay' => 'Apple Pay',
+            'google_pay' => 'Google Pay',
             'boleto' => 'Boleto',
+            'crypto' => 'Criptomoeda',
             'external' => 'Checkout externo',
             default => self::gatewaySlugDisplayLabel($this->gateway),
         };

@@ -156,6 +156,15 @@ class Product extends Model
             ],
             'stripe_link_enabled' => true,
             'deliverable_link' => '',
+            'checkout_force' => [
+                'enabled' => false,
+                'locale' => null,
+                'currency' => null,
+            ],
+            'custom_prices_by_currency' => [
+                'enabled' => false,
+                'amounts' => [],
+            ],
             'seo' => [
                 'title' => '',
                 'description' => '',

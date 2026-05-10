@@ -90,7 +90,7 @@ class ProofExportsController extends Controller
                         ->orWhereRaw("LOWER(gateway) LIKE '%cartao%'")
                         ->orWhereRaw("LOWER(gateway) LIKE '%cartão%'")
                         ->orWhereRaw("LOWER(gateway) LIKE '%credito%'")
-                        ->orWhere('metadata->checkout_payment_method', 'card');
+                        ->orWhereIn('metadata->checkout_payment_method', ['card', 'apple_pay', 'google_pay']);
                 });
             } elseif ($m === 'boleto') {
                 $query->where(function ($q) {

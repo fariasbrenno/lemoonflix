@@ -13,6 +13,7 @@ use App\Models\SubscriptionPlan;
 use App\Models\User;
 use App\Services\AccessEmailService;
 use App\Services\PaymentService;
+use App\Support\MetaPurchaseTracking;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -146,11 +147,15 @@ class UpsellController extends Controller
         $orderId = $request->integer('order_id', 0);
         $conversionPixels = Product::defaultConversionPixels();
         $orderAmount = 0;
+        $purchaseContents = [];
+        $metaPurchaseEventId = '';
         if ($orderId > 0) {
-            $order = Order::with('product')->find($orderId);
+            $order = Order::with('product', 'orderItems')->find($orderId);
             if ($order && $order->product) {
                 $conversionPixels = $order->product->conversion_pixels ?? $conversionPixels;
                 $orderAmount = (float) $order->amount;
+                $purchaseContents = MetaPurchaseTracking::purchaseContentsFromOrder($order, false);
+                $metaPurchaseEventId = MetaPurchaseTracking::purchaseEventId($order->id);
                 if ($order->product->type === Product::TYPE_AREA_MEMBROS_EXTERNA) {
                     // Entrega externa: não exibir botão de acesso interno.
                     $showButton = false;
@@ -183,6 +188,8 @@ class UpsellController extends Controller
             'conversion_pixels' => $conversionPixels,
             'order_id' => $orderId > 0 ? $orderId : null,
             'order_amount' => $orderAmount,
+            'meta_purchase_event_id' => $metaPurchaseEventId,
+            'purchase_contents' => $purchaseContents,
         ]);
     }
 

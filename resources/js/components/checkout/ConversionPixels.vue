@@ -341,6 +341,17 @@ function shouldFireForEntry(entry, triggerType, isOrderBump) {
     return true;
 }
 
+function normalizePurchaseContents(raw) {
+    if (!Array.isArray(raw)) return [];
+    return raw
+        .filter((c) => c && c.id != null && String(c.id).trim() !== '')
+        .map((c) => ({
+            id: String(c.id).trim(),
+            quantity: Math.max(1, parseInt(c.quantity, 10) || 1),
+            item_price: Math.round((Number(c.item_price) || 0) * 100) / 100,
+        }));
+}
+
 defineExpose({
     fireInitiateCheckout(value, currency = 'BRL', extras = {}) {
         const p = props.pixels || {};
@@ -359,20 +370,58 @@ defineExpose({
             });
         }
     },
-    firePurchase(value, currency = 'BRL', orderId = '', isOrderBump = false, triggerType = 'approved') {
+    firePurchase(value, currency = 'BRL', orderId = '', isOrderBump = false, triggerType = 'approved', extra = {}) {
         const p = props.pixels || {};
         const num = Number(value) || 0;
+        const cur = typeof currency === 'string' && currency.trim() ? currency.trim().toUpperCase() : 'BRL';
+        const contents = normalizePurchaseContents(extra?.contents);
+        const eventId =
+            typeof extra?.eventId === 'string' && extra.eventId.trim() !== ''
+                ? extra.eventId.trim()
+                : orderId
+                  ? `getfy_purchase_${orderId}`
+                  : '';
 
         if (p.meta?.enabled && window.fbq) {
             getMetaEntries(p).forEach((entry) => {
                 if (!entry.pixel_id || !shouldFireForEntry(entry, triggerType, isOrderBump)) return;
-                window.fbq('track', 'Purchase', { value: num, currency, content_ids: orderId ? [orderId] : [] });
+                let entryContents = contents;
+                if (entry.disable_order_bump_events && contents.length > 1) {
+                    entryContents = contents.slice(0, 1);
+                }
+                let entryValue = num;
+                if (entry.disable_order_bump_events && contents.length > 1 && entryContents.length === 1) {
+                    entryValue = entryContents.reduce((s, c) => s + c.item_price * c.quantity, 0);
+                }
+                let contentIds = entryContents.map((c) => c.id);
+                if (contentIds.length === 0 && orderId) {
+                    contentIds = [String(orderId)];
+                }
+                const numItems =
+                    entryContents.length > 0
+                        ? entryContents.reduce((s, c) => s + c.quantity, 0)
+                        : orderId
+                          ? 1
+                          : 0;
+                const payload = {
+                    value: entryValue > 0 ? entryValue : num,
+                    currency: cur,
+                    content_ids: contentIds,
+                    num_items: numItems,
+                };
+                if (entryContents.length > 0) {
+                    payload.contents = entryContents;
+                }
+                const opts = eventId ? { eventID: eventId } : undefined;
+                window.fbq('track', 'Purchase', payload, opts);
             });
         }
         if (p.tiktok?.enabled && window.ttq?.track) {
             getTiktokEntries(p).forEach((entry) => {
                 if (!entry.pixel_id || !shouldFireForEntry(entry, triggerType, isOrderBump)) return;
-                window.ttq.track('CompletePayment', { value: num, currency, content_id: orderId });
+                const ttContents = entry.disable_order_bump_events && contents.length > 1 ? contents.slice(0, 1) : contents;
+                const ttId = ttContents[0]?.id || orderId;
+                window.ttq.track('CompletePayment', { value: num, currency: cur, content_id: ttId });
             });
         }
         if (p.google_ads?.enabled && window.gtag) {
@@ -382,8 +431,8 @@ defineExpose({
                 window.gtag('event', 'conversion', {
                     send_to: sendTo,
                     value: num,
-                    currency,
-                    transaction_id: orderId,
+                    currency: cur,
+                    transaction_id: orderId || undefined,
                 });
             });
         }
@@ -393,7 +442,7 @@ defineExpose({
                 window.gtag('event', 'purchase', {
                     send_to: String(entry.measurement_id).trim(),
                     value: num,
-                    currency,
+                    currency: cur,
                     transaction_id: orderId,
                 });
             });

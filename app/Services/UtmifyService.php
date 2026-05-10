@@ -34,7 +34,7 @@ class UtmifyService
     {
         $order->loadMissing(['user', 'orderItems.product', 'orderItems.productOffer', 'orderItems.subscriptionPlan']);
 
-        $session = CheckoutSession::where('order_id', $order->id)->first();
+        $session = CheckoutSession::where('order_id', $order->id)->orderByDesc('id')->first();
         $apiSession = null;
         if (! $session) {
             if ($order->api_checkout_session_id !== null) {
@@ -102,15 +102,7 @@ class UtmifyService
         $apiMeta = $apiSession?->metadata;
         $apiMeta = is_array($apiMeta) ? $apiMeta : [];
 
-        $trackingParameters = [
-            'src' => $apiMeta['src'] ?? null,
-            'sck' => $apiMeta['sck'] ?? null,
-            'utm_source' => $session?->utm_source ?? ($apiMeta['utm_source'] ?? null),
-            'utm_campaign' => $session?->utm_campaign ?? ($apiMeta['utm_campaign'] ?? null),
-            'utm_medium' => $session?->utm_medium ?? ($apiMeta['utm_medium'] ?? null),
-            'utm_content' => $apiMeta['utm_content'] ?? null,
-            'utm_term' => $apiMeta['utm_term'] ?? null,
-        ];
+        $trackingParameters = $this->buildMergedTrackingParameters($session, $apiMeta, $order);
 
         $totalCents = (int) round((float) $order->amount * 100);
         $commission = [
@@ -156,6 +148,54 @@ class UtmifyService
         }
 
         return $response;
+    }
+
+    /**
+     * Mescla parâmetros de tráfego: camadas posteriores sobrescrevem as anteriores (metadata do pedido ganha).
+     *
+     * @param  array<string, mixed>  $apiMeta
+     * @return array<string, string|null>
+     */
+    private function buildMergedTrackingParameters(?CheckoutSession $session, array $apiMeta, Order $order): array
+    {
+        $keys = [
+            'src', 'sck',
+            'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term',
+            'fbclid', 'gclid', 'msclkid', 'fbp', 'fbc',
+        ];
+
+        $sessionUtm = [
+            'utm_source' => $session?->utm_source,
+            'utm_medium' => $session?->utm_medium,
+            'utm_campaign' => $session?->utm_campaign,
+        ];
+        $sessionTracking = is_array($session?->tracking_metadata) ? $session->tracking_metadata : [];
+        $orderMeta = is_array($order->metadata) ? $order->metadata : [];
+
+        $layers = [$apiMeta, $sessionUtm, $sessionTracking, $orderMeta];
+
+        $out = array_fill_keys($keys, null);
+        foreach ($layers as $layer) {
+            if (! is_array($layer)) {
+                continue;
+            }
+            foreach ($keys as $k) {
+                if (! array_key_exists($k, $layer)) {
+                    continue;
+                }
+                $v = $layer[$k];
+                if (! is_string($v) && ! is_numeric($v)) {
+                    continue;
+                }
+                $s = trim((string) $v);
+                if ($s === '') {
+                    continue;
+                }
+                $out[$k] = mb_substr($s, 0, 512);
+            }
+        }
+
+        return $out;
     }
 
     private function mapPaymentMethod(?string $gateway): string

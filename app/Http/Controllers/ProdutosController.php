@@ -14,14 +14,17 @@ use App\Models\GatewayCredential;
 use App\Models\Product;
 use App\Models\ProductOffer;
 use App\Models\ProductOrderBump;
+use App\Models\Setting;
 use App\Models\SubscriptionPlan;
 use App\Models\User;
 use App\Plugins\PluginRegistry;
 use App\Services\StorageService;
 use App\Services\TeamAccessService;
+use App\Support\CheckoutCustomPriceByCurrency;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -259,11 +262,28 @@ class ProdutosController extends Controller
         })->values()->all();
 
         $checkoutConfig = $produto->checkout_config ?? [];
+        $defaultsCfg = Product::defaultCheckoutConfig();
         $checkoutConfig['email_template'] = array_merge(
             Product::defaultEmailTemplate(),
             $checkoutConfig['email_template'] ?? []
         );
+        $checkoutConfig['checkout_force'] = array_replace_recursive(
+            $defaultsCfg['checkout_force'] ?? ['enabled' => false, 'locale' => null, 'currency' => null],
+            is_array($checkoutConfig['checkout_force'] ?? null) ? $checkoutConfig['checkout_force'] : []
+        );
+        $checkoutConfig['custom_prices_by_currency'] = array_replace_recursive(
+            $defaultsCfg['custom_prices_by_currency'] ?? ['enabled' => false, 'amounts' => []],
+            is_array($checkoutConfig['custom_prices_by_currency'] ?? null) ? $checkoutConfig['custom_prices_by_currency'] : []
+        );
         $produtoArray['checkout_config'] = $checkoutConfig;
+
+        $currenciesRaw = Setting::get('currencies', null, $tenantId);
+        $tenantCurrencies = $currenciesRaw
+            ? (is_string($currenciesRaw) ? json_decode($currenciesRaw, true) : $currenciesRaw)
+            : config('products.currencies');
+        if (! is_array($tenantCurrencies)) {
+            $tenantCurrencies = config('products.currencies');
+        }
 
         $external = DB::table('cademi_integration_product')
             ->where('product_id', $produto->id)
@@ -315,6 +335,7 @@ class ProdutosController extends Controller
             'productTypes' => $productTypes,
             'billingTypes' => $billingTypes,
             'exchange_rates' => $rates,
+            'tenant_currencies' => $tenantCurrencies,
             'gateways_by_method' => $gatewaysByMethod,
             'cademi_integrations' => $cademiIntegrations,
             'plugin_product_panels' => PluginRegistry::getProductPanels(),
@@ -388,6 +409,19 @@ class ProdutosController extends Controller
             $decoded = json_decode($request->cart_recovery_email, true);
             $request->merge(['cart_recovery_email' => is_array($decoded) ? $decoded : null]);
         }
+
+        $tenantId = auth()->user()->tenant_id;
+        $currenciesRaw = Setting::get('currencies', null, $tenantId);
+        $tenantCurrenciesList = $currenciesRaw
+            ? (is_string($currenciesRaw) ? json_decode($currenciesRaw, true) : $currenciesRaw)
+            : config('products.currencies');
+        if (! is_array($tenantCurrenciesList)) {
+            $tenantCurrenciesList = config('products.currencies');
+        }
+        if (! is_array($tenantCurrenciesList)) {
+            $tenantCurrenciesList = [];
+        }
+        $allowedCurrencyCodes = CheckoutCustomPriceByCurrency::currencyCodesFromTenantSettings($tenantCurrenciesList);
 
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -499,11 +533,51 @@ class ProdutosController extends Controller
             'pagarme_billing.company_address.neighborhood' => ['nullable', 'string', 'max:255'],
             'pagarme_billing.company_address.city' => ['nullable', 'string', 'max:255'],
             'pagarme_billing.company_address.state' => ['nullable', 'string', 'max:2'],
+            'checkout_force' => ['nullable', 'array'],
+            'checkout_force.enabled' => ['nullable', 'boolean'],
+            'checkout_force.locale' => ['nullable', 'string', 'in:pt_BR,en,es'],
+            'checkout_force.currency' => ['nullable', 'string', 'max:8', Rule::in($allowedCurrencyCodes)],
+            'custom_prices_by_currency' => ['nullable', 'array'],
+            'custom_prices_by_currency.enabled' => ['nullable', 'boolean'],
+            'custom_prices_by_currency.amounts' => ['nullable', 'array'],
         ]);
         $validated['is_active'] = $request->boolean('is_active', true);
         $validated['currency'] = $validated['currency'] ?? config('products.currency_default', 'BRL');
 
-        $tenantId = auth()->user()->tenant_id;
+        $checkoutForceInput = array_key_exists('checkout_force', $validated) ? $validated['checkout_force'] : null;
+        unset($validated['checkout_force']);
+        $customPricesInput = array_key_exists('custom_prices_by_currency', $validated) ? $validated['custom_prices_by_currency'] : null;
+        unset($validated['custom_prices_by_currency']);
+
+        if (is_array($checkoutForceInput) && ! empty($checkoutForceInput['enabled'])) {
+            $loc = isset($checkoutForceInput['locale']) ? trim((string) $checkoutForceInput['locale']) : '';
+            $cur = isset($checkoutForceInput['currency']) ? strtoupper(trim((string) $checkoutForceInput['currency'])) : '';
+            if ($loc === '' || ! in_array($loc, ['pt_BR', 'en', 'es'], true)) {
+                throw ValidationException::withMessages([
+                    'checkout_force.locale' => ['Selecione o idioma ao forçar idioma e moeda.'],
+                ]);
+            }
+            if ($cur === '' || ! in_array($cur, $allowedCurrencyCodes, true)) {
+                throw ValidationException::withMessages([
+                    'checkout_force.currency' => ['Selecione uma moeda válida (configurada em Configurações).'],
+                ]);
+            }
+        }
+
+        $sanitizedCustomAmounts = [];
+        if (is_array($customPricesInput) && ! empty($customPricesInput['enabled']) && isset($customPricesInput['amounts']) && is_array($customPricesInput['amounts'])) {
+            foreach ($customPricesInput['amounts'] as $codeRaw => $val) {
+                $code = strtoupper(trim((string) $codeRaw));
+                if ($code === '' || $code === 'BRL' || ! in_array($code, $allowedCurrencyCodes, true)) {
+                    continue;
+                }
+                $num = is_numeric($val) ? (float) $val : 0.0;
+                if ($num < 0.01) {
+                    continue;
+                }
+                $sanitizedCustomAmounts[$code] = round($num, 2);
+            }
+        }
         $validated['combo_product_ids'] = $this->assertValidComboProductIdsForHost(
             $tenantId,
             $produto->id,
@@ -668,6 +742,29 @@ class ProdutosController extends Controller
                 Product::defaultCheckoutConfig()['pagarme_billing'] ?? [],
                 $pagarmeBillingInput
             );
+            $configUpdated = true;
+        }
+        if ($request->has('checkout_force')) {
+            $defCf = Product::defaultCheckoutConfig()['checkout_force'] ?? ['enabled' => false, 'locale' => null, 'currency' => null];
+            $cf = is_array($checkoutForceInput) ? $checkoutForceInput : [];
+            $config['checkout_force'] = array_replace_recursive($defCf, [
+                'enabled' => ! empty($cf['enabled']),
+                'locale' => isset($cf['locale']) && is_string($cf['locale']) ? trim($cf['locale']) : null,
+                'currency' => isset($cf['currency']) && is_string($cf['currency']) ? strtoupper(trim($cf['currency'])) : null,
+            ]);
+            $configUpdated = true;
+        }
+        if ($request->has('custom_prices_by_currency')) {
+            $defCp = Product::defaultCheckoutConfig()['custom_prices_by_currency'] ?? ['enabled' => false, 'amounts' => []];
+            $cp = is_array($customPricesInput) ? $customPricesInput : [];
+            $config['custom_prices_by_currency'] = [
+                'enabled' => ! empty($cp['enabled']),
+                'amounts' => $sanitizedCustomAmounts,
+            ];
+            if (empty($config['custom_prices_by_currency']['enabled'])) {
+                $config['custom_prices_by_currency']['amounts'] = [];
+            }
+            $config['custom_prices_by_currency'] = array_replace_recursive($defCp, $config['custom_prices_by_currency']);
             $configUpdated = true;
         }
         if ($configUpdated) {

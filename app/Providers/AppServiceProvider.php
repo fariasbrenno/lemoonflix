@@ -13,6 +13,7 @@ use App\Listeners\CademiEventSubscriber;
 use App\Listeners\SpedyEventSubscriber;
 use App\Listeners\UtmifyEventSubscriber;
 use App\Listeners\SendApiApplicationWebhookListener;
+use App\Listeners\SendMetaPurchaseCapiOnOrderCompleted;
 use App\Listeners\WebhookEventSubscriber;
 use App\Support\DockerSetupState;
 use Illuminate\Auth\Notifications\ResetPassword;
@@ -109,6 +110,7 @@ class AppServiceProvider extends ServiceProvider
 
         Event::listen(OrderCompleted::class, SendAccessEmailOnOrderCompleted::class);
         Event::listen(OrderCompleted::class, SendPanelPushOnOrderCompleted::class);
+        Event::listen(OrderCompleted::class, SendMetaPurchaseCapiOnOrderCompleted::class);
         Event::listen(PixGenerated::class, SendPanelPushOnPixGenerated::class);
         Event::listen(BoletoGenerated::class, SendPanelPushOnBoletoGenerated::class);
         Event::subscribe(WebhookEventSubscriber::class);

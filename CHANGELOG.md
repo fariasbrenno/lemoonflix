@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.0.14] - 10-05-2026
+
+### Novidades
+
+- **CajuPay**: integração com a **nova API de cartões e carteiras** (**Google Pay** e **Apple Pay**), alinhada ao fluxo atual do checkout com o SDK da CajuPay.
+- **Checkout / Produto — forçar idioma e moeda**: nova opção na edição do produto (aba Geral) para **forçar o idioma** (`pt_BR`, `en` ou `es`) e a **moeda exibida** no checkout público, **sobrepondo a sugestão por país (geo)** até o visitante mudar manualmente no checkout; a moeda é validada contra as moedas configuradas do tenant.
+- **Checkout / Produto — preço manual em outras moedas**: nova opção para **definir valores fixos por moeda estrangeira** (exceto BRL) no **preço base do produto**; na finalização o sistema **converte para BRL no servidor** com a taxa `rate_to_brl` configurada em **Configurações → Moedas** (não vale para ofertas/planos com preço próprio).
+- **Relatórios**: botões para **baixar público comprador** e **público engajado**, pensados para **públicos personalizados da Meta Ads**.
+
+### Melhorias
+
+- **Meta Pixel**: revisão do sistema de pixels para que as **vendas sejam registadas de forma consistente** com a **API de conversão** (Conversions API), reduzindo perdas de eventos em relação ao fluxo anterior.
+
+### Correções
+
+- **Checkout**: corrigida a **mudança automática de idioma e moeda** com base na geo/localização, que em alguns cenários **não era aplicada** ao visitante; o fluxo de sugestão e persistência volta a respeitar a geo até o utilizador alterar manualmente no checkout (e respeita a opção de forçar idioma/moeda por produto quando configurada).
+
 ## [1.0.13] - 29-04-2026
 
 ### Novidades

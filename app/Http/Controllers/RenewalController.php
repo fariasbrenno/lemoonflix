@@ -13,7 +13,9 @@ use App\Models\Order;
 use App\Models\Setting;
 use App\Models\Subscription;
 use App\Services\EfiPixRecorrenteService;
+use App\Services\GeoIp;
 use App\Services\PaymentService;
+use App\Support\CheckoutPaymentMethodOrder;
 use App\Support\FakeConsumerData;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -23,7 +25,7 @@ use Inertia\Response;
 
 class RenewalController extends Controller
 {
-    public function show(string $token): Response|RedirectResponse
+    public function show(Request $request, string $token): Response|RedirectResponse
     {
         $subscription = Subscription::with(['user', 'product', 'subscriptionPlan'])
             ->where('renewal_token', $token)
@@ -44,7 +46,11 @@ class RenewalController extends Controller
         }
 
         $tenantId = $subscription->tenant_id;
-        $availablePaymentMethods = $this->buildAvailablePaymentMethods($product, $subscription);
+        $suggestions = (new GeoIp)->getSuggestionsForRequest($request);
+        $availablePaymentMethods = CheckoutPaymentMethodOrder::applyForCountry(
+            $this->buildAvailablePaymentMethods($product, $subscription),
+            $suggestions['country_code'] ?? null
+        );
         $savedPaymentMethods = $subscription->user->savedPaymentMethods()->forTenant($tenantId)->get()->map(fn ($m) => [
             'id' => $m->id,
             'type' => $m->type,

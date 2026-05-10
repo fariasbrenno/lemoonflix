@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { AlertCircle, CheckCircle2 } from 'lucide-vue-next';
 import { useCheckoutLocale } from '@/composables/useCheckoutLocale';
@@ -78,10 +78,21 @@ if (typeof window !== 'undefined' && props.checkout_builder_preview) {
     window.addEventListener('message', onPreviewMessage);
 }
 onUnmounted(() => {
+    if (initiateCheckoutDebounceTimer) {
+        clearTimeout(initiateCheckoutDebounceTimer);
+        initiateCheckoutDebounceTimer = null;
+    }
     if (typeof window !== 'undefined' && props.checkout_builder_preview) {
         window.removeEventListener('message', onPreviewMessage);
     }
 });
+
+const appliedCoupon = ref(null);
+
+const storageKey = computed(() => props.product?.checkout_slug || 'default');
+const checkoutForceConfig = computed(() => props.product?.checkout_config?.checkout_force ?? null);
+const customDisplayPricesByCurrency = computed(() => props.product?.custom_display_prices_by_currency ?? {});
+const skipCustomDisplayPrices = computed(() => appliedCoupon.value != null);
 
 const {
     locale,
@@ -99,6 +110,9 @@ const {
     suggestedLocale: props.suggested_locale,
     suggestedCurrency: props.suggested_currency,
     storageKey: props.product?.checkout_slug || 'default',
+    checkoutForce: checkoutForceConfig,
+    customDisplayPricesByCurrency,
+    skipCustomDisplayPrices,
 });
 
 const localeLabels = { pt_BR: 'PT', en: 'EN', es: 'ES' };
@@ -109,7 +123,59 @@ const banners = computed(() => appearance.value.banners ?? []);
 const sideBannersFiltered = computed(() => (appearance.value.side_banners ?? []).filter(Boolean));
 const timerConfig = computed(() => effectiveConfig.value?.timer ?? {});
 const salesNotificationConfig = computed(() => effectiveConfig.value?.sales_notification ?? {});
-const storageKey = computed(() => props.product?.checkout_slug || 'default');
+
+/** Sentinel quando o backend não detecta país (localhost / headers ausentes). */
+const CHECKOUT_GEO_UNKNOWN = '__UNKNOWN__';
+
+function onUserSetLocale(v) {
+    try {
+        if (typeof window !== 'undefined') {
+            localStorage.setItem(`checkout_locale_manual_${storageKey.value}`, '1');
+        }
+    } catch (_) {}
+    setLocale(v);
+}
+
+function onUserSetCurrency(v) {
+    try {
+        if (typeof window !== 'undefined') {
+            localStorage.setItem(`checkout_locale_manual_${storageKey.value}`, '1');
+        }
+    } catch (_) {}
+    setCurrency(v);
+}
+
+function applyGeoLocaleFromServer() {
+    if (typeof window === 'undefined' || props.checkout_builder_preview) {
+        return;
+    }
+    try {
+        const slug = storageKey.value;
+        const manualKey = `checkout_locale_manual_${slug}`;
+        const geoKey = `checkout_last_geo_country_${slug}`;
+        if (localStorage.getItem(manualKey)) {
+            return;
+        }
+        const force = props.product?.checkout_config?.checkout_force;
+        if (force?.enabled) {
+            return;
+        }
+        const normalized = props.suggested_country_code
+            ? String(props.suggested_country_code).toUpperCase().trim()
+            : CHECKOUT_GEO_UNKNOWN;
+        const last = localStorage.getItem(geoKey);
+        if (last === normalized) {
+            return;
+        }
+        setLocale(props.suggested_locale);
+        setCurrency(props.suggested_currency);
+        localStorage.setItem(geoKey, normalized);
+    } catch (_) {}
+}
+
+onMounted(() => {
+    applyGeoLocaleFromServer();
+});
 
 const seo = computed(() => effectiveConfig.value?.seo ?? {});
 /** Título da aba do navegador e para compartilhamento (Open Graph). Vem do "Título para compartilhamento" no Builder. */
@@ -156,7 +222,6 @@ function onExitPopupAccept(code) {
     exitPopupAcceptedCoupon.value = code || '';
 }
 
-const appliedCoupon = ref(null);
 function onCouponApplied(data) {
     appliedCoupon.value = data;
 }
@@ -178,18 +243,54 @@ const checkoutTotalBrl = computed(() => {
     return Number(base) + orderBumpsTotalBrl.value;
 });
 
+/** Preço da linha principal (sem order bumps), para contents do pixel Meta. */
+const mainLinePriceBrl = computed(() => {
+    const c = appliedCoupon.value;
+    if (c && typeof c.final_price === 'number') {
+        return Number(c.final_price);
+    }
+    return Number(props.product?.price_brl ?? props.product?.price ?? 0);
+});
+
 const conversionPixels = computed(() => props.conversion_pixels || {});
 
 const conversionPixelsRef = ref(null);
 let initiateCheckoutFiredForLoad = false;
 const pixelsReady = ref(false);
 const pendingPurchase = ref(null);
+/** Evita InitiateCheckout duplicado com o mesmo valor (Meta). */
+let lastInitiateCheckoutTotal = null;
+let initiateCheckoutDebounceTimer = null;
+
+const pixelCurrency = computed(() =>
+    typeof displayCurrency.value === 'string' && displayCurrency.value.trim()
+        ? displayCurrency.value.trim().toUpperCase()
+        : 'BRL'
+);
+
+function fireInitiateCheckoutIfNeeded() {
+    const api = conversionPixelsRef.value;
+    if (!pixelsReady.value || !api?.fireInitiateCheckout) return;
+    const total = Math.round((Number(checkoutTotalBrl.value) || 0) * 100) / 100;
+    if (total <= 0) return;
+    if (
+        lastInitiateCheckoutTotal !== null &&
+        Math.abs(lastInitiateCheckoutTotal - total) < 0.01
+    ) {
+        return;
+    }
+    lastInitiateCheckoutTotal = total;
+    api.fireInitiateCheckout(total, pixelCurrency.value);
+}
 
 function tryFirePendingPurchase() {
     const api = conversionPixelsRef.value;
     if (!pixelsReady.value || !api?.firePurchase || !pendingPurchase.value) return;
     const p = pendingPurchase.value;
-    api.firePurchase(p.amount, p.currency || 'BRL', String(p.order_id || ''), false, 'approved');
+    api.firePurchase(p.amount, p.currency || 'BRL', String(p.order_id || ''), false, 'approved', {
+        eventId: p.meta_event_id,
+        contents: p.purchase_contents,
+    });
     pendingPurchase.value = null;
 }
 
@@ -199,9 +300,19 @@ function onConversionPixelsReady() {
     const api = conversionPixelsRef.value;
     if (!api?.fireInitiateCheckout) return;
     initiateCheckoutFiredForLoad = true;
-    api.fireInitiateCheckout(checkoutTotalBrl.value, 'BRL');
+    lastInitiateCheckoutTotal = null;
+    fireInitiateCheckoutIfNeeded();
     tryFirePendingPurchase();
 }
+
+watch(checkoutTotalBrl, () => {
+    if (!initiateCheckoutFiredForLoad || !pixelsReady.value) return;
+    if (initiateCheckoutDebounceTimer) clearTimeout(initiateCheckoutDebounceTimer);
+    initiateCheckoutDebounceTimer = setTimeout(() => {
+        initiateCheckoutDebounceTimer = null;
+        fireInitiateCheckoutIfNeeded();
+    }, 500);
+});
 
 function onPaymentApproved(payload) {
     if (!payload || typeof payload !== 'object') return;
@@ -211,6 +322,8 @@ function onPaymentApproved(payload) {
         order_id: orderId,
         amount: Number(payload.amount) || 0,
         currency: typeof payload.currency === 'string' && payload.currency ? payload.currency : 'BRL',
+        meta_event_id: typeof payload.meta_event_id === 'string' ? payload.meta_event_id : `getfy_purchase_${orderId}`,
+        purchase_contents: Array.isArray(payload.purchase_contents) ? payload.purchase_contents : [],
     };
     tryFirePendingPurchase();
 }
@@ -316,8 +429,8 @@ const hasCustomBodyEnd = computed(() => String(customBodyEndHtml.value).trim() !
                             :supported-locales="supportedLocales"
                             :currency-list="currencyList"
                             :locale-labels="localeLabels"
-                            @set-locale="setLocale"
-                            @set-currency="setCurrency"
+                            @set-locale="onUserSetLocale"
+                            @set-currency="onUserSetCurrency"
                         />
                         <hr class="my-8 border-0 border-t border-gray-100" data-checkout="divider-summary-form" />
                         <CheckoutForm
@@ -346,6 +459,7 @@ const hasCustomBodyEnd = computed(() => String(customBodyEndHtml.value).trim() !
                             :card-mercadopago-sandbox="card_mercadopago_sandbox"
                             :card-gateway-keys="card_gateway_keys || {}"
                             :checkout-total-brl="checkoutTotalBrl"
+                            :main-line-price-brl="mainLinePriceBrl"
                             @coupon-applied="onCouponApplied"
                             @coupon-cleared="onCouponCleared"
                             @payment-approved="onPaymentApproved"

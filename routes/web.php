@@ -389,6 +389,12 @@ Route::middleware(['auth', 'admin.tenant', 'role:admin|infoprodutor|team', 'audi
     Route::get('/relatorios', [\App\Http\Controllers\RelatoriosController::class, 'index'])
         ->middleware('team.permission:relatorios.view')
         ->name('relatorios.index');
+    Route::get('/relatorios/export/meta-compradores', [\App\Http\Controllers\RelatoriosController::class, 'exportMetaCompradores'])
+        ->middleware(['team.permission:relatorios.view', 'throttle:20,1'])
+        ->name('relatorios.export.meta-compradores');
+    Route::get('/relatorios/export/meta-abandonos', [\App\Http\Controllers\RelatoriosController::class, 'exportMetaAbandonos'])
+        ->middleware(['team.permission:relatorios.view', 'throttle:20,1'])
+        ->name('relatorios.export.meta-abandonos');
 
     Route::middleware('team.permission:configuracoes.view')->group(function () {
         Route::get('/configuracoes', [\App\Http\Controllers\SettingsController::class, 'index'])->name('settings.index');

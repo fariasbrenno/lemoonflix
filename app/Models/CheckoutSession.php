@@ -23,6 +23,7 @@ class CheckoutSession extends Model
         'checkout_slug', 'session_token', 'step', 'form_started_at', 'form_filled_at',
         'email', 'name',
         'customer_ip', 'order_id', 'utm_source', 'utm_medium', 'utm_campaign',
+        'tracking_metadata',
         'abandoned_webhook_fired_at',
         'recovery_email_stage', 'recovery_email_last_sent_at', 'recovery_email_next_at',
     ];
@@ -35,6 +36,7 @@ class CheckoutSession extends Model
             'abandoned_webhook_fired_at' => 'datetime',
             'recovery_email_last_sent_at' => 'datetime',
             'recovery_email_next_at' => 'datetime',
+            'tracking_metadata' => 'array',
         ];
     }
 

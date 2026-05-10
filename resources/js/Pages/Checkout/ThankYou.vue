@@ -17,6 +17,8 @@ const props = defineProps({
     conversion_pixels: { type: Object, default: () => ({}) },
     order_id: { type: Number, default: null },
     order_amount: { type: Number, default: 0 },
+    meta_purchase_event_id: { type: String, default: '' },
+    purchase_contents: { type: Array, default: () => [] },
 });
 
 /**
@@ -29,7 +31,12 @@ function onConversionPixelsReady() {
     const api = conversionPixelsRef.value;
     if (!api?.firePurchase) return;
     purchaseFiredForLoad = true;
-    api.firePurchase(props.order_amount, 'BRL', String(props.order_id), false, 'approved');
+    const eid =
+        (props.meta_purchase_event_id || '').trim() || `getfy_purchase_${props.order_id}`;
+    api.firePurchase(props.order_amount, 'BRL', String(props.order_id), false, 'approved', {
+        eventId: eid,
+        contents: props.purchase_contents,
+    });
 }
 </script>
 

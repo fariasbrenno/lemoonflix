@@ -259,6 +259,7 @@ const props = defineProps({
         default: () => ({ pix: [], card: [], boleto: [], pix_auto: [], apple_pay: [], google_pay: [], crypto: [] }),
     },
     plugin_product_panels: { type: Array, default: () => [] },
+    tenant_currencies: { type: Array, default: () => [] },
 });
 
 const pluginTabs = computed(() => {
@@ -352,6 +353,33 @@ const pagarmeBillingInitial = {
     },
 };
 const stripeLinkEnabled = props.produto.checkout_config?.stripe_link_enabled;
+
+const checkoutForceFromProduto = props.produto.checkout_config?.checkout_force ?? {};
+const checkoutForceInitial = {
+    enabled: Boolean(checkoutForceFromProduto.enabled),
+    locale: ['pt_BR', 'en', 'es'].includes(checkoutForceFromProduto.locale) ? checkoutForceFromProduto.locale : 'pt_BR',
+    currency: checkoutForceFromProduto.currency ? String(checkoutForceFromProduto.currency).toUpperCase() : 'BRL',
+};
+
+function buildCustomPricesAmountsInitial() {
+    const raw = props.produto.checkout_config?.custom_prices_by_currency?.amounts;
+    const out = {};
+    const rows = Array.isArray(props.tenant_currencies) ? props.tenant_currencies : [];
+    for (const row of rows) {
+        const code = String(row?.code || '').toUpperCase();
+        if (!code || code === 'BRL') {
+            continue;
+        }
+        const v = raw && Object.prototype.hasOwnProperty.call(raw, code) ? raw[code] : raw?.[code];
+        out[code] = v != null && v !== '' ? String(v) : '';
+    }
+    return out;
+}
+
+const tenantCurrenciesNonBrl = computed(() =>
+    (props.tenant_currencies || []).filter((c) => c && String(c.code || '').toUpperCase() !== 'BRL')
+);
+
 const form = useForm({
     name: props.produto.name,
     slug: props.produto.slug,
@@ -395,6 +423,11 @@ const form = useForm({
     },
     cart_recovery_email: cartRecoveryInitial,
     pagarme_billing: pagarmeBillingInitial,
+    checkout_force: { ...checkoutForceInitial },
+    custom_prices_by_currency: {
+        enabled: Boolean(props.produto.checkout_config?.custom_prices_by_currency?.enabled),
+        amounts: buildCustomPricesAmountsInitial(),
+    },
 });
 
 const priceNum = computed(() => parseFloat(form.price) || 0);
@@ -1268,6 +1301,20 @@ function submit() {
             fd.append('email_template[body_html]', '');
         }
         fd.append('deliverable_link', form.deliverable_link || '');
+        fd.append('checkout_force[enabled]', form.checkout_force?.enabled ? '1' : '0');
+        if (form.checkout_force?.enabled) {
+            fd.append('checkout_force[locale]', form.checkout_force.locale || '');
+            fd.append('checkout_force[currency]', form.checkout_force.currency || '');
+        }
+        fd.append('custom_prices_by_currency[enabled]', form.custom_prices_by_currency?.enabled ? '1' : '0');
+        if (form.custom_prices_by_currency?.enabled && form.custom_prices_by_currency.amounts) {
+            for (const [code, val] of Object.entries(form.custom_prices_by_currency.amounts)) {
+                if (val === '' || val == null) {
+                    continue;
+                }
+                fd.append(`custom_prices_by_currency[amounts][${code}]`, String(val));
+            }
+        }
         if (form.pagarme_billing) {
             fd.append('pagarme_billing[mode]', form.pagarme_billing.mode || 'customer');
             const ca = form.pagarme_billing.company_address || {};
@@ -1765,6 +1812,79 @@ function submit() {
                                     Adicionar plano
                                 </Button>
                             </template>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm dark:border-zinc-700/80 dark:bg-zinc-800/95 xl:min-h-0">
+                    <div class="border-b border-zinc-200/80 bg-zinc-50/80 px-6 py-4 dark:border-zinc-700/80 dark:bg-zinc-800/50">
+                        <h2 class="text-base font-semibold text-zinc-900 dark:text-white">Checkout público</h2>
+                        <p class="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
+                            Idioma e moeda exibidos no link de checkout, e valores fixos em outras moedas (opcional). A cobrança continua sendo calculada em BRL no servidor.
+                        </p>
+                    </div>
+                    <div class="space-y-6 p-6">
+                        <div class="rounded-xl border border-zinc-200/80 bg-zinc-50/40 p-4 dark:border-zinc-600/80 dark:bg-zinc-900/40">
+                            <Toggle v-model="form.checkout_force.enabled" label="Forçar idioma e moeda no checkout" />
+                            <p class="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+                                Quando ativo, ignora a sugestão por país (geo) até o visitante mudar manualmente o idioma ou a moeda no checkout.
+                            </p>
+                            <div v-if="form.checkout_force.enabled" class="mt-4 grid max-w-xl gap-4 sm:grid-cols-2">
+                                <div>
+                                    <label class="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Idioma *</label>
+                                    <select v-model="form.checkout_force.locale" required :class="inputClass">
+                                        <option value="pt_BR">Português (Brasil)</option>
+                                        <option value="en">English</option>
+                                        <option value="es">Español</option>
+                                    </select>
+                                    <p v-if="form.errors['checkout_force.locale']" class="mt-1 text-sm text-red-600 dark:text-red-400">
+                                        {{ form.errors['checkout_force.locale'] }}
+                                    </p>
+                                </div>
+                                <div>
+                                    <label class="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Moeda *</label>
+                                    <select v-model="form.checkout_force.currency" required :class="inputClass">
+                                        <option v-for="c in tenant_currencies" :key="c.code" :value="String(c.code).toUpperCase()">
+                                            {{ c.label || c.code }} ({{ String(c.code).toUpperCase() }})
+                                        </option>
+                                    </select>
+                                    <p v-if="form.errors['checkout_force.currency']" class="mt-1 text-sm text-red-600 dark:text-red-400">
+                                        {{ form.errors['checkout_force.currency'] }}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="rounded-xl border border-zinc-200/80 bg-zinc-50/40 p-4 dark:border-zinc-600/80 dark:bg-zinc-900/40">
+                            <Toggle v-model="form.custom_prices_by_currency.enabled" label="Personalizar preço exibido/cobrado por moeda" />
+                            <p class="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+                                Aplica-se apenas ao <strong class="font-medium text-zinc-700 dark:text-zinc-300">preço base do produto</strong> (sem oferta nem plano). Order bumps seguem em BRL e são convertidos pela taxa.
+                            </p>
+                            <p class="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+                                Valores em moeda estrangeira são convertidos para BRL na finalização usando a taxa <code class="rounded bg-zinc-200/80 px-1 dark:bg-zinc-700">rate_to_brl</code> de cada moeda nas
+                                <Link href="/configuracoes?tab=moedas" class="text-[var(--color-primary)] hover:underline">Configurações → Moedas</Link>.
+                            </p>
+                            <div v-if="form.custom_prices_by_currency.enabled" class="mt-4 space-y-4">
+                                <p v-if="!tenantCurrenciesNonBrl.length" class="text-sm text-zinc-600 dark:text-zinc-400">
+                                    Nenhuma moeda extra além de BRL. Adicione moedas em Configurações para preencher valores aqui.
+                                </p>
+                                <div v-for="row in tenantCurrenciesNonBrl" :key="row.code" class="max-w-xs">
+                                    <label class="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                                        {{ row.label || row.code }} ({{ String(row.code).toUpperCase() }}) — opcional
+                                    </label>
+                                    <input
+                                        v-model="form.custom_prices_by_currency.amounts[String(row.code).toUpperCase()]"
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        :placeholder="`Ex.: 10.00 em ${String(row.code).toUpperCase()}`"
+                                        :class="inputClass"
+                                    />
+                                </div>
+                                <p v-if="form.errors['custom_prices_by_currency.amounts']" class="text-sm text-red-600 dark:text-red-400">
+                                    {{ form.errors['custom_prices_by_currency.amounts'] }}
+                                </p>
+                            </div>
                         </div>
                     </div>
                 </section>

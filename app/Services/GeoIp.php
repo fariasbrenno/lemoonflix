@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
@@ -51,6 +52,25 @@ class GeoIp
     }
 
     /**
+     * País e sugestões a partir da request: cabeçalhos de CDN (Cloudflare, Vercel) ou IP + ip-api.
+     *
+     * @return array{country_code: string|null, suggested_locale: string, suggested_currency: string}
+     */
+    public function getSuggestionsForRequest(Request $request): array
+    {
+        $fromHeader = $this->countryFromTrustedHeaders($request);
+        if ($fromHeader !== null) {
+            return [
+                'country_code' => $fromHeader,
+                'suggested_locale' => $this->localeForCountry($fromHeader),
+                'suggested_currency' => $this->currencyForCountry($fromHeader),
+            ];
+        }
+
+        return $this->getSuggestionsForIp((string) ($request->ip() ?? ''));
+    }
+
+    /**
      * Obtém país (e sugestões de locale/moeda) a partir do IP.
      * Usa cache por IP.
      *
@@ -74,6 +94,27 @@ class GeoIp
             'suggested_locale' => $this->localeForCountry($countryCode),
             'suggested_currency' => $this->currencyForCountry($countryCode),
         ];
+    }
+
+    private function countryFromTrustedHeaders(Request $request): ?string
+    {
+        foreach (['CF-IPCountry', 'X-Vercel-IP-Country'] as $headerName) {
+            $raw = $request->header($headerName);
+            if ($raw === null || $raw === '') {
+                continue;
+            }
+            $code = strtoupper(trim((string) (is_array($raw) ? ($raw[0] ?? '') : $raw)));
+            if (strlen($code) !== 2) {
+                continue;
+            }
+            if (in_array($code, ['XX', 'T1'], true)) {
+                continue;
+            }
+
+            return $code;
+        }
+
+        return null;
     }
 
     private function fetchCountryCode(string $ip): ?string

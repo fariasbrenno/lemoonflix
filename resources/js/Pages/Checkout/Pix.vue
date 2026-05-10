@@ -12,6 +12,8 @@ defineOptions({ layout: null });
 const conversionPixelsRef = ref(null);
 const pixelsReady = ref(false);
 const pendingPurchase = ref(false);
+/** URL para redirecionar após disparar Purchase (evita sair antes do pixel hidratar). */
+const redirectAfterFiring = ref(null);
 
 const props = defineProps({
     token: { type: String, required: true },
@@ -29,6 +31,8 @@ const props = defineProps({
     expiry_seconds: { type: Number, default: 900 },
     amount: { type: Number, default: 0 },
     conversion_pixels: { type: Object, default: () => ({}) },
+    meta_purchase_event_id: { type: String, default: '' },
+    purchase_contents: { type: Array, default: () => [] },
 });
 
 const qrcodeSrc = computed(() => {
@@ -73,6 +77,35 @@ const hasCustomerInfo = computed(
     () => (props.customer_name || '') !== '' || (props.customer_email || '') !== '' || (props.customer_phone || '') !== ''
 );
 
+function firePixPurchase() {
+    const api = conversionPixelsRef.value;
+    if (!api?.firePurchase) return;
+    const eid = (props.meta_purchase_event_id || '').trim() || `getfy_purchase_${props.order_id}`;
+    api.firePurchase(props.amount, 'BRL', String(props.order_id), false, 'pix', {
+        eventId: eid,
+        contents: props.purchase_contents,
+    });
+}
+
+function navigateToUrl(url) {
+    if (url.startsWith('http') || url.startsWith('//')) {
+        window.location.href = url;
+    } else {
+        router.visit(url);
+    }
+}
+
+function flushPurchaseAndRedirect() {
+    const url = redirectAfterFiring.value;
+    if (!url) return;
+    redirectAfterFiring.value = null;
+    if (pendingPurchase.value) {
+        firePixPurchase();
+        pendingPurchase.value = false;
+    }
+    setTimeout(() => navigateToUrl(url), 450);
+}
+
 async function checkOrderStatus() {
     try {
         const { data } = await axios.get('/checkout/order-status', { params: { token: props.token } });
@@ -84,15 +117,10 @@ async function checkOrderStatus() {
                 pollInterval = null;
             }
             pendingPurchase.value = true;
-            if (pixelsReady.value && conversionPixelsRef.value?.firePurchase) {
-                conversionPixelsRef.value.firePurchase(props.amount, 'BRL', String(props.order_id), false, 'pix');
-                pendingPurchase.value = false;
-            }
             const url = data.redirect_url || props.redirect_after_purchase || '/area-membros';
-            if (url.startsWith('http') || url.startsWith('//')) {
-                window.location.href = url;
-            } else {
-                router.visit(url);
+            redirectAfterFiring.value = url;
+            if (pixelsReady.value) {
+                flushPurchaseAndRedirect();
             }
         }
         return data;
@@ -103,9 +131,8 @@ async function checkOrderStatus() {
 
 function onConversionPixelsReady() {
     pixelsReady.value = true;
-    if (pendingPurchase.value && conversionPixelsRef.value?.firePurchase) {
-        conversionPixelsRef.value.firePurchase(props.amount, 'BRL', String(props.order_id), false, 'pix');
-        pendingPurchase.value = false;
+    if (redirectAfterFiring.value) {
+        flushPurchaseAndRedirect();
     }
 }
 

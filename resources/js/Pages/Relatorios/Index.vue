@@ -7,7 +7,6 @@ import {
     CircleDollarSign,
     ShoppingCart,
     CreditCard,
-    ShoppingBag,
     RotateCcw,
     Package,
     Users,
@@ -15,6 +14,7 @@ import {
     Eye,
     EyeOff,
     XCircle,
+    Download,
 } from 'lucide-vue-next';
 
 defineOptions({ layout: LayoutInfoprodutor });
@@ -43,7 +43,36 @@ const props = defineProps({
     abandonados_com_email: { type: Array, default: () => [] },
     reembolsos_count: { type: Number, default: 0 },
     reembolsos_total: { type: Number, default: 0 },
+    meta_export_products: { type: Array, default: () => [] },
 });
+
+const META_HEADER =
+    'email,email,email,phone,phone,phone,madid,fn,ln,zip,ct,st,country,dob,doby,gen,age,uid,value';
+
+const showModalCompradores = ref(false);
+const showModalAbandonos = ref(false);
+const productCompradores = ref('');
+const productAbandonos = ref('');
+
+function openModalCompradores() {
+    productCompradores.value = props.meta_export_products[0]?.id ?? '';
+    showModalCompradores.value = true;
+}
+
+function openModalAbandonos() {
+    productAbandonos.value = props.meta_export_products[0]?.id ?? '';
+    showModalAbandonos.value = true;
+}
+
+function downloadMetaCompradores() {
+    if (!productCompradores.value) return;
+    window.location.href = `/relatorios/export/meta-compradores?product_id=${encodeURIComponent(productCompradores.value)}`;
+}
+
+function downloadMetaAbandonos() {
+    if (!productAbandonos.value) return;
+    window.location.href = `/relatorios/export/meta-abandonos?product_id=${encodeURIComponent(productAbandonos.value)}`;
+}
 
 const periodOptions = [
     { value: 'hoje', label: 'Hoje' },
@@ -160,15 +189,150 @@ const chartOptionsFormas = computed(() => ({
                     {{ opt.label }}
                 </button>
             </nav>
-            <button
-                type="button"
-                :aria-label="valuesVisible ? 'Ocultar valores' : 'Mostrar valores'"
-                class="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
-                @click="valuesVisible = !valuesVisible"
+            <div class="flex flex-wrap items-center gap-2">
+                <button
+                    type="button"
+                    class="inline-flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-800 shadow-sm transition-colors hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-700"
+                    :disabled="!meta_export_products.length"
+                    @click="openModalCompradores"
+                >
+                    <Download class="h-4 w-4 shrink-0" aria-hidden="true" />
+                    CSV clientes existentes
+                </button>
+                <button
+                    type="button"
+                    class="inline-flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-800 shadow-sm transition-colors hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-700"
+                    :disabled="!meta_export_products.length"
+                    @click="openModalAbandonos"
+                >
+                    <Download class="h-4 w-4 shrink-0" aria-hidden="true" />
+                    CSV clientes engajados
+                </button>
+                <button
+                    type="button"
+                    :aria-label="valuesVisible ? 'Ocultar valores' : 'Mostrar valores'"
+                    class="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+                    @click="valuesVisible = !valuesVisible"
+                >
+                    <Eye v-if="valuesVisible" class="h-5 w-5" aria-hidden="true" />
+                    <EyeOff v-else class="h-5 w-5" aria-hidden="true" />
+                </button>
+            </div>
+        </div>
+
+        <p
+            v-if="!meta_export_products.length"
+            class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100"
+        >
+            Não há produtos disponíveis para exportação (verifique permissões da equipe ou cadastre um produto).
+        </p>
+
+        <div
+            v-if="showModalCompradores"
+            class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="meta-modal-compradores-title"
+            @click.self="showModalCompradores = false"
+        >
+            <div
+                class="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-zinc-200 bg-white p-5 shadow-xl dark:border-zinc-600 dark:bg-zinc-900"
+                @click.stop
             >
-                <Eye v-if="valuesVisible" class="h-5 w-5" aria-hidden="true" />
-                <EyeOff v-else class="h-5 w-5" aria-hidden="true" />
-            </button>
+                <h2 id="meta-modal-compradores-title" class="text-lg font-semibold text-zinc-900 dark:text-white">
+                    Baixar CSV — clientes existentes (Meta Ads)
+                </h2>
+                <p class="mt-3 text-sm leading-relaxed text-zinc-600 dark:text-zinc-300">
+                    Será gerado um arquivo no formato de lista de clientes do Meta, com <strong>compradores que concluíram o
+                        pagamento</strong> do produto selecionado nos <strong>últimos 180 dias</strong>. Em caso de mais de um
+                    pedido no período, usa-se o <strong>pedido mais recente</strong> por e-mail (valor na coluna
+                    <code class="rounded bg-zinc-100 px-1 text-xs dark:bg-zinc-800">value</code>).
+                </p>
+                <label class="mt-4 block text-sm font-medium text-zinc-700 dark:text-zinc-200" for="meta-product-compradores"
+                    >Produto</label
+                >
+                <select
+                    id="meta-product-compradores"
+                    v-model="productCompradores"
+                    class="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
+                >
+                    <option v-for="p in meta_export_products" :key="p.id" :value="p.id">{{ p.name }}</option>
+                </select>
+                <p class="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+                    Cabeçalho do arquivo: {{ META_HEADER }}
+                </p>
+                <div class="mt-5 flex flex-wrap justify-end gap-2">
+                    <button
+                        type="button"
+                        class="rounded-lg px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                        @click="showModalCompradores = false"
+                    >
+                        Cancelar
+                    </button>
+                    <button
+                        type="button"
+                        class="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                        :disabled="!productCompradores"
+                        @click="downloadMetaCompradores"
+                    >
+                        Baixar CSV
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div
+            v-if="showModalAbandonos"
+            class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="meta-modal-abandonos-title"
+            @click.self="showModalAbandonos = false"
+        >
+            <div
+                class="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-zinc-200 bg-white p-5 shadow-xl dark:border-zinc-600 dark:bg-zinc-900"
+                @click.stop
+            >
+                <h2 id="meta-modal-abandonos-title" class="text-lg font-semibold text-zinc-900 dark:text-white">
+                    Baixar CSV — clientes engajados (Meta Ads)
+                </h2>
+                <p class="mt-3 text-sm leading-relaxed text-zinc-600 dark:text-zinc-300">
+                    Lista de quem <strong>iniciou o checkout</strong> (formulário), <strong>não concluiu a compra</strong> no
+                    fluxo da sessão, com sessão criada nos <strong>últimos 180 dias</strong>, após o período de graça de
+                    abandono. <strong>Não entram</strong> e-mails que tenham <strong>pedido concluído do mesmo produto
+                        depois</strong> do momento do abandono (última interação no formulário).
+                </p>
+                <label class="mt-4 block text-sm font-medium text-zinc-700 dark:text-zinc-200" for="meta-product-abandonos"
+                    >Produto</label
+                >
+                <select
+                    id="meta-product-abandonos"
+                    v-model="productAbandonos"
+                    class="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
+                >
+                    <option v-for="p in meta_export_products" :key="p.id" :value="p.id">{{ p.name }}</option>
+                </select>
+                <p class="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+                    Cabeçalho do arquivo: {{ META_HEADER }}
+                </p>
+                <div class="mt-5 flex flex-wrap justify-end gap-2">
+                    <button
+                        type="button"
+                        class="rounded-lg px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                        @click="showModalAbandonos = false"
+                    >
+                        Cancelar
+                    </button>
+                    <button
+                        type="button"
+                        class="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                        :disabled="!productAbandonos"
+                        @click="downloadMetaAbandonos"
+                    >
+                        Baixar CSV
+                    </button>
+                </div>
+            </div>
         </div>
 
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">

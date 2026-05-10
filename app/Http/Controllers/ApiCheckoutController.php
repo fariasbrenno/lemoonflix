@@ -21,6 +21,7 @@ use App\Services\PaymentService;
 use App\Services\PushinPayPixRecorrenteService;
 use App\Services\StorageService;
 use App\Support\FakeConsumerData;
+use App\Support\MetaPurchaseTracking;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -682,7 +683,7 @@ class ApiCheckoutController extends Controller
             return redirect('/')->with('error', 'Pedido inválido.');
         }
 
-        $order = Order::with('apiApplication')->find($orderId);
+        $order = Order::with('apiApplication', 'orderItems')->find($orderId);
         if (! $order || ! $order->api_application_id) {
             return redirect('/')->with('error', 'Pedido inválido.');
         }
@@ -709,6 +710,8 @@ class ApiCheckoutController extends Controller
             'conversion_pixels' => $order->apiApplication?->conversion_pixels ?? [],
             'return_url' => $returnUrl,
             'seconds' => 5,
+            'meta_purchase_event_id' => MetaPurchaseTracking::purchaseEventId($order->id),
+            'purchase_contents' => MetaPurchaseTracking::purchaseContentsFromOrder($order, false),
         ]);
     }
 
