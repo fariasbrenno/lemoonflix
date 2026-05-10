@@ -16,6 +16,7 @@ import {
     requestPagarmeTokenFromForm,
     resetPagarmeTokenizeScriptState,
 } from '@/composables/usePagarmeTokenizecard.js';
+import { isIosDevice } from '@/utils/isIosDevice.js';
 
 const STORAGE_KEY = 'checkout_draft';
 
@@ -157,9 +158,18 @@ const showFooterCustom = computed(
     () => footerEnabled.value && (footerLogoUrl.value !== '' || footerText.value !== '' || footerSupportEmail.value !== '')
 );
 
+/** Lista efetiva no checkout: Apple Pay só em iOS; Google Pay só fora de iOS (Android / desktop). */
+const checkoutPaymentMethods = computed(() => {
+    const list = Array.isArray(props.availablePaymentMethods) ? props.availablePaymentMethods : [];
+    if (isIosDevice()) {
+        return list.filter((m) => m.id !== 'google_pay');
+    }
+    return list.filter((m) => m.id !== 'apple_pay');
+});
+
 /** Gateway do método cartão (primeiro método com id === 'card' em available_payment_methods). */
 const cardGatewaySlug = computed(() => {
-    const methods = Array.isArray(props.availablePaymentMethods) ? props.availablePaymentMethods : [];
+    const methods = checkoutPaymentMethods.value;
     const cardMethod = methods.find((m) => m.id === 'card');
     return (cardMethod?.gateway_slug || '').toLowerCase();
 });
@@ -170,7 +180,7 @@ const isCardGatewayAsaas = computed(() => cardGatewaySlug.value === 'asaas');
 const isCardGatewayPagarme = computed(() => cardGatewaySlug.value === 'pagarme');
 /** Gateway do boleto (primeiro método com id === 'boleto' em available_payment_methods). */
 const boletoGatewaySlug = computed(() => {
-    const methods = Array.isArray(props.availablePaymentMethods) ? props.availablePaymentMethods : [];
+    const methods = checkoutPaymentMethods.value;
     const boletoMethod = methods.find((m) => m.id === 'boleto');
     return (boletoMethod?.gateway_slug || '').toLowerCase();
 });
@@ -289,7 +299,7 @@ const showBillingAddressBlock = computed(() => {
 });
 
 watch(
-    () => props.availablePaymentMethods,
+    checkoutPaymentMethods,
     (list) => {
         const methods = Array.isArray(list) ? list : [];
         if (methods.length > 0 && (!form.payment_method || !methods.some((m) => m.id === form.payment_method))) {
@@ -464,6 +474,15 @@ onMounted(() => {
     } catch (_) {}
     // Não forçar showEditForm = true aqui: o watch em form.payment_method já abre o form quando o usuário escolhe PIX/Boleto.
     // Se forçássemos aqui, ao carregar com draft salvo + primeiro método = boleto/pix, os dados "fixos" e o botão Editar dados nunca apareceriam.
+
+    // Se o checkout já carrega com um método CajuPay SDK pré-selecionado (ex.: cartão
+    // como primeiro método disponível), o watch em form.payment_method NÃO dispara
+    // (watcher só reage a MUDANÇAS, não ao valor inicial). Sem isso a sessão CajuPay
+    // nunca era criada automaticamente — o cliente tinha que trocar de método e voltar
+    // pra ver o input do cartão / botão de wallet aparecer. Forçamos a criação inicial.
+    if (isCajuPaySdkFlow.value) {
+        scheduleEnsureCajuPaySession();
+    }
 });
 
 watch(
@@ -739,14 +758,14 @@ const cardRefusedMessage = ref('');
 
 /** Slug do gateway do método atualmente selecionado em form.payment_method. */
 const currentMethodGatewaySlug = computed(() => {
-    const methods = Array.isArray(props.availablePaymentMethods) ? props.availablePaymentMethods : [];
+    const methods = checkoutPaymentMethods.value;
     const m = methods.find((x) => x.id === form.payment_method);
     return (m?.gateway_slug || '').toLowerCase();
 });
 
-/** Fluxo CajuPay SDK: cartão / boleto / Apple Pay / Google Pay rodando pelo embedded SDK. */
+/** Fluxo CajuPay SDK: cartão / Apple Pay / Google Pay rodando pelo embedded SDK. */
 const isCajuPaySdkFlow = computed(() => {
-    return ['card', 'boleto', 'apple_pay', 'google_pay'].includes(form.payment_method)
+    return ['card', 'apple_pay', 'google_pay'].includes(form.payment_method)
         && currentMethodGatewaySlug.value === 'cajupay';
 });
 
@@ -872,7 +891,7 @@ async function ensureCajuPaySession({ silent = false } = {}) {
         ) {
             const methodLabel = form.payment_method === 'apple_pay' ? 'Apple Pay'
                 : form.payment_method === 'google_pay' ? 'Google Pay'
-                : form.payment_method === 'boleto' ? 'Boleto'
+                : form.payment_method === 'card' ? 'Cartão'
                 : 'Esse método de pagamento';
             cajupayError.value = `${methodLabel} não está disponível para esta conta CajuPay no momento. Selecione outra forma de pagamento (ex.: Cartão).`;
         }
@@ -943,7 +962,7 @@ watch(() => form.payment_method, () => {
         stopCajuPayPolling();
     }
     // Se o novo método é um fluxo CajuPay SDK, agenda criação automática da sessão
-    // assim o widget já monta com os inputs (cartão / boleto / wallet) sem o usuário
+    // assim o widget já monta com os inputs (cartão / wallet) sem o usuário
     // precisar clicar em "Pagar" primeiro.
     if (isCajuPaySdkFlow.value) {
         // Cria o draft (sessão sem Order) imediatamente — sem exigir email/nome/CPF.
@@ -1134,7 +1153,7 @@ function onRefusedOtherPaymentMethod(e) {
     }
     showCardRefusedModal.value = false;
     cardRefusedMessage.value = '';
-    const other = props.availablePaymentMethods.find((m) => m.id !== 'card');
+    const other = checkoutPaymentMethods.value.find((m) => m.id !== 'card');
     if (other) form.payment_method = other.id;
 }
 
@@ -1612,7 +1631,7 @@ async function submitCajuPaySdkFlow(paymentMethod) {
 }
 
 function submit() {
-    const methods = Array.isArray(props.availablePaymentMethods) ? props.availablePaymentMethods : [];
+    const methods = checkoutPaymentMethods.value;
     if (methods.length === 0) {
         form.setError('payment_method', 'Nenhum método de pagamento disponível.');
         return;
@@ -2271,13 +2290,13 @@ function submit() {
             <!-- Forma de pagamento (componentes por gateway em gateways/<slug>/) -->
             <CheckoutPaymentMethods
                 v-model="form.payment_method"
-                :available-payment-methods="availablePaymentMethods"
+                :available-payment-methods="checkoutPaymentMethods"
                 :primary-color="primaryColor"
                 :t="t"
             />
             <p v-if="form.errors.payment_method" class="text-sm font-medium text-red-600">{{ form.errors.payment_method }}</p>
 
-            <!-- CajuPay SDK (Cartão / Boleto / Apple Pay / Google Pay) -->
+            <!-- CajuPay SDK (Cartão / Apple Pay / Google Pay) -->
             <!-- Mesmo padrão visual do painel do Stripe: outer com border-2/bg-gray-50/50, header
                  com ícone + título e o widget do SDK dentro de um box branco arredondado. -->
             <div
@@ -2288,16 +2307,13 @@ function submit() {
                 <div class="flex items-center gap-2 text-gray-700">
                     <span class="flex h-8 w-8 shrink-0 items-center justify-center">
                         <CreditCard v-if="form.payment_method === 'card'" class="h-5 w-5 text-gray-500" />
-                        <FileText v-else-if="form.payment_method === 'boleto'" class="h-5 w-5 text-gray-500" />
                         <Shield v-else class="h-5 w-5 text-gray-500" />
                     </span>
                     <span class="text-sm font-medium">
                         {{
                             form.payment_method === 'card'
                                 ? (t('checkout.dados_cartao') || 'Dados do cartão')
-                                : form.payment_method === 'boleto'
-                                  ? 'Boleto bancário'
-                                  : form.payment_method === 'apple_pay'
+                                : form.payment_method === 'apple_pay'
                                     ? 'Apple Pay'
                                     : 'Google Pay'
                         }}
@@ -2369,7 +2385,7 @@ function submit() {
                 <!-- Asaas: 2 etapas (cartão + endereço com CEP) -->
                 <div v-else-if="isCardGatewayAsaas" class="space-y-4">
                     <AsaasCard
-                        :method="availablePaymentMethods?.find((m) => m.id === 'card') || { id: 'card', label: 'Cartão' }"
+                        :method="checkoutPaymentMethods?.find((m) => m.id === 'card') || { id: 'card', label: 'Cartão' }"
                         :selected="true"
                         :primary-color="primaryColor"
                         :card-data="asaasCardData"
@@ -2897,7 +2913,7 @@ function submit() {
                                 Tentar com outro cartão
                             </button>
                             <button
-                                v-if="availablePaymentMethods.some(m => m.id !== 'card')"
+                                v-if="checkoutPaymentMethods.some(m => m.id !== 'card')"
                                 type="button"
                                 class="flex-1 rounded-xl border-2 border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2"
                                 @click.prevent.stop="onRefusedOtherPaymentMethod($event)"

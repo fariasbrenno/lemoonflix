@@ -3,7 +3,6 @@ import { ref, watch, computed } from 'vue';
 import axios from 'axios';
 import Button from '@/components/ui/Button.vue';
 import { X, ExternalLink, Copy, Check } from 'lucide-vue-next';
-import CajuPayD0Badge from '@/components/settings/CajuPayD0Badge.vue';
 
 const props = defineProps({
     open: { type: Boolean, default: false },
@@ -271,7 +270,6 @@ const canTestConnection = computed(() => {
                         <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">
                             {{ gateway?.name || 'Gateway' }}
                         </h2>
-                        <CajuPayD0Badge v-if="gateway?.slug === 'cajupay'" />
                     </div>
                     <button
                         type="button"

@@ -19,7 +19,7 @@ const mountedToken = ref('');
 //   2ª chamada (no clique do Pagar) → submete os dados / dispara o flow nativo
 // `cardFieldReady` vira true quando o SDK emite onStatus phase "awaiting_card_details"
 // OU quando a 1ª promise de confirm resolve — o que vier primeiro.
-// Para boleto/PIX, NÃO há priming: o boleto é gerado no único confirm do clique do Pagar.
+// Para PIX (quando a sessão permitir), NÃO há priming: um único confirm no clique do Pagar.
 const cardFieldReady = ref(false);
 // Flag pra impedir que a 1ª confirm() automática seja interpretada como erro normal
 // (ela pode lançar `awaiting_card_details` como rejection em alguns SDKs antigos).
@@ -28,7 +28,7 @@ const cardPrimingInFlight = ref(false);
 const containerSelector = computed(() => `#${props.containerId}`);
 // Métodos que precisam do priming (1ª confirm() automática pra renderizar widget):
 // card (input), apple_pay (botão Apple Pay), google_pay (botão Google Pay).
-// Boleto/PIX não precisam — eles são gerados no único confirm do Pagar.
+// PIX não precisa — gera no único confirm do Pagar.
 const needsPriming = computed(() => ['card', 'apple_pay', 'google_pay'].includes(props.paymentMethod));
 const isCardMethod = computed(() => props.paymentMethod === 'card');
 
@@ -80,7 +80,7 @@ async function tryMount() {
         // sem isso o widget NÃO aparece (input do cartão / botão da wallet). Essa
         // chamada cria a cobrança no PSP e monta o widget. NÃO submete pagamento ainda
         // — isso é a 2ª chamada (vem do clique do Pagar via .confirm() exposto).
-        // Para boleto/PIX, basta um confirm no clique do Pagar (sem priming).
+        // Para PIX, basta um confirm no clique do Pagar (sem priming).
         if (needsPriming.value) {
             await primeCardField();
         } else {
@@ -227,7 +227,7 @@ defineExpose({
     <div class="space-y-2">
         <!--
             Container do SDK CajuPay. NÃO usamos min-height aqui: o SDK monta o iframe/widget
-            com a altura própria (cartão ~150px, boleto ~80px, wallets ~60px). Forçar altura
+            com a altura própria (cartão ~150px, wallets ~60px). Forçar altura
             mínima criava espaço em branco visível embaixo do widget. O SDK também controla
             seu próprio fundo / borda interna; mantemos o wrapper transparente.
         -->

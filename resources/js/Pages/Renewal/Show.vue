@@ -1,8 +1,9 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, watch } from 'vue';
 import { Head, useForm } from '@inertiajs/vue3';
 import { AlertCircle, CheckCircle2, CreditCard, Loader2 } from 'lucide-vue-next';
 import Button from '@/components/ui/Button.vue';
+import { isIosDevice } from '@/utils/isIosDevice.js';
 
 defineOptions({ layout: null });
 
@@ -24,12 +25,30 @@ const form = useForm({
 });
 
 const methods = computed(() => {
-    const list = props.available_payment_methods || [];
+    let list = props.available_payment_methods || [];
+    if (isIosDevice()) {
+        list = list.filter((m) => m.id !== 'google_pay');
+    } else {
+        list = list.filter((m) => m.id !== 'apple_pay');
+    }
     if (list.length === 0) {
         return [{ id: 'manual', label: 'Outro (instruções por e-mail)' }];
     }
     return list.map((m) => ({ id: m.id, label: m.label }));
 });
+
+watch(
+    methods,
+    (list) => {
+        if (form.payment_method === 'apple_pay' && !list.some((m) => m.id === 'apple_pay')) {
+            form.payment_method = list[0]?.id ?? 'manual';
+        }
+        if (form.payment_method === 'google_pay' && !list.some((m) => m.id === 'google_pay')) {
+            form.payment_method = list[0]?.id ?? 'manual';
+        }
+    },
+    { immediate: true }
+);
 
 const amountFormatted = computed(() => {
     return new Intl.NumberFormat('pt-BR', {

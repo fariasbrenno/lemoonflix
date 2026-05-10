@@ -1951,9 +1951,15 @@ function submit() {
                                                 <path d="M17.564 12.42c-.02-2.11 1.72-3.13 1.8-3.18-0.98-1.43-2.5-1.62-3.04-1.64-1.29-.13-2.52.76-3.17.76-.66 0-1.66-.74-2.74-.72-1.41.02-2.71.82-3.43 2.08-1.46 2.54-.37 6.3 1.06 8.36.7 1.01 1.53 2.14 2.62 2.1 1.05-.04 1.45-.68 2.72-.68 1.27 0 1.62.68 2.73.66 1.13-.02 1.85-1.03 2.54-2.04.8-1.17 1.13-2.31 1.15-2.37-.03-.01-2.21-.85-2.24-3.33zM15.43 5.36c.58-.7.97-1.67.86-2.64-.84.03-1.85.56-2.45 1.26-.54.62-1.01 1.61-.88 2.56.93.07 1.89-.47 2.47-1.18z" />
                                             </svg>
                                         </div>
-                                        <div>
+                                        <div class="min-w-0 flex-1">
                                             <p class="font-semibold text-zinc-900 dark:text-white">Apple Pay</p>
-                                            <p class="text-xs text-zinc-500 dark:text-zinc-400">Carteira digital (iOS / Safari)</p>
+                                            <p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">Carteira digital</p>
+                                            <span
+                                                class="mt-1.5 inline-flex max-w-full items-center rounded-md border border-zinc-200/90 bg-white px-2 py-0.5 text-[11px] font-medium leading-tight text-zinc-600 shadow-sm dark:border-zinc-600 dark:bg-zinc-800/90 dark:text-zinc-300"
+                                                title="No checkout público, o botão Apple Pay só é exibido em iPhone e iPad."
+                                            >
+                                                Somente dispositivos iOS
+                                            </span>
                                         </div>
                                     </div>
                                     <GatewaySelect
@@ -1988,9 +1994,15 @@ function submit() {
                                                 <path fill="#EA4335" d="M12 5.977c1.468 0 2.785.504 3.823 1.494l2.866-2.866C16.96 3.092 14.7 2.182 12 2.182A9.997 9.997 0 0 0 3.057 7.5l3.345 2.589c.788-2.364 2.993-4.112 5.598-4.112z" />
                                             </svg>
                                         </div>
-                                        <div>
+                                        <div class="min-w-0 flex-1">
                                             <p class="font-semibold text-zinc-900 dark:text-white">Google Pay</p>
-                                            <p class="text-xs text-zinc-500 dark:text-zinc-400">Carteira digital (Android / Chrome)</p>
+                                            <p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">Carteira digital</p>
+                                            <span
+                                                class="mt-1.5 inline-flex max-w-full items-center rounded-md border border-zinc-200/90 bg-white px-2 py-0.5 text-[11px] font-medium leading-tight text-zinc-600 shadow-sm dark:border-zinc-600 dark:bg-zinc-800/90 dark:text-zinc-300"
+                                                title="No checkout público, o Google Pay não é exibido em iPhone/iPad; apenas em Android ou desktop."
+                                            >
+                                                Somente Android ou desktop
+                                            </span>
                                         </div>
                                     </div>
                                     <GatewaySelect

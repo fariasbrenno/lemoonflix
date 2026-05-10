@@ -1324,7 +1324,7 @@ class CheckoutController extends Controller
 
     /**
      * Cria sessão de checkout SDK na CajuPay e devolve o token público para o frontend.
-     * Fluxo paralelo a process() usado para Cartão / Boleto / Apple Pay / Google Pay quando
+     * Fluxo paralelo a process() usado para Cartão / Apple Pay / Google Pay quando
      * o gateway selecionado é CajuPay.
      */
     /**
@@ -1346,7 +1346,7 @@ class CheckoutController extends Controller
             'subscription_plan_id' => ['nullable', 'exists:subscription_plans,id'],
             'order_bump_ids' => ['nullable', 'array'],
             'order_bump_ids.*' => ['integer', 'exists:product_order_bumps,id'],
-            'payment_method' => ['required', 'string', 'in:card,boleto,apple_pay,google_pay'],
+            'payment_method' => ['required', 'string', 'in:card,apple_pay,google_pay'],
             'checkout_session_token' => ['nullable', 'string', 'max:64'],
             'display_currency' => ['nullable', 'string', 'in:BRL,USD,EUR'],
             'coupon_code' => ['nullable', 'string', 'max:64'],
@@ -1385,7 +1385,6 @@ class CheckoutController extends Controller
         // obrigatório quando embeddedOnly: true".
         $defaultMethodMap = [
             'card' => 'card',
-            'boleto' => 'boleto',
             'apple_pay' => 'apple_pay',
             'google_pay' => 'google_pay',
         ];
@@ -1490,7 +1489,8 @@ class CheckoutController extends Controller
             return response()->json(['message' => 'Sessão CajuPay expirada. Recarregue a página.'], 404);
         }
 
-        $product = Product::find((int) $draft['product_id']);
+        // product_id no draft é UUID string (Product::$keyType = 'string'); nunca usar (int).
+        $product = Product::where('id', $draft['product_id'])->where('is_active', true)->first();
         if (! $product) {
             Cache::forget($draftKey);
             return response()->json(['message' => 'Produto não encontrado.'], 404);

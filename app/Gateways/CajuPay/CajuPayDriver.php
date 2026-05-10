@@ -319,7 +319,7 @@ class CajuPayDriver implements GatewayDriver
      *
      * @param  array<string, mixed>  $credentials
      * @param  array<string, mixed>  $consumer  Optional initial payer info.
-     * @param  array<int, string>  $allowedMethods  Subset of ['card','boleto','apple_pay','google_pay','pix'].
+     * @param  array<int, string>  $allowedMethods  Subset of ['card','apple_pay','google_pay','pix'].
      * @return array{token: string, checkout_session_id: string, raw: array<string, mixed>}
      */
     public function createSdkCheckoutSession(
@@ -560,8 +560,7 @@ class CajuPayDriver implements GatewayDriver
         string $externalId,
         string $notificationUrl
     ): array {
-        // Idem cartão: boleto na CajuPay é gerado via SDK embedded.
-        throw new \RuntimeException('CajuPay: boleto é processado via SDK no checkout (use o fluxo embedded).');
+        throw new \RuntimeException('CajuPay: boleto não está disponível nesta integração.');
     }
 
     private function normalizeDocument(string $document): string

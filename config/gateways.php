@@ -12,11 +12,15 @@ return [
             'slug' => 'cajupay',
             'name' => 'CajuPay',
             'image' => 'images/gateways/cajupay.png',
-            'methods' => ['pix', 'card', 'boleto', 'apple_pay', 'google_pay'],
-            'scope' => 'national',
+            'methods' => ['pix', 'card', 'apple_pay', 'google_pay'],
+            'scope' => 'international',
             'country' => 'br',
-            'country_name' => 'Brasil',
+            'country_name' => 'Brasil / Global',
             'country_flag' => 'brasil.png',
+            'countries' => [
+                ['flag' => 'brasil.png', 'name' => 'Brasil'],
+                ['flag' => 'global.png', 'name' => 'Global'],
+            ],
             'signup_url' => 'https://cajupay.com.br',
             'driver' => \App\Gateways\CajuPay\CajuPayDriver::class,
             'credential_keys' => [
@@ -165,7 +169,7 @@ return [
     'default_order' => [
         'pix' => ['cajupay', 'spacepag', 'efi', 'mercadopago', 'pagarme', 'pushinpay', 'asaas'],
         'card' => ['cajupay', 'efi', 'stripe', 'mercadopago', 'pagarme', 'asaas'],
-        'boleto' => ['cajupay', 'efi', 'mercadopago', 'pagarme', 'asaas'],
+        'boleto' => ['efi', 'mercadopago', 'pagarme', 'asaas'],
         'pix_auto' => ['efi', 'pushinpay'],
         'apple_pay' => ['cajupay'],
         'google_pay' => ['cajupay'],

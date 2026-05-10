@@ -20,7 +20,6 @@ import MercadopagoCard from './mercadopago/Card.vue';
 import MercadopagoBoleto from './mercadopago/Boleto.vue';
 
 import CajupayCard from './cajupay/Card.vue';
-import CajupayBoleto from './cajupay/Boleto.vue';
 import CajupayApplePay from './cajupay/ApplePay.vue';
 import CajupayGooglePay from './cajupay/GooglePay.vue';
 
@@ -65,7 +64,6 @@ export const gatewayMethodComponents = {
     cajupay: {
         pix: DefaultMethodCard,
         card: CajupayCard,
-        boleto: CajupayBoleto,
         apple_pay: CajupayApplePay,
         google_pay: CajupayGooglePay,
     },

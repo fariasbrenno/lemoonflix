@@ -149,7 +149,7 @@ export function setCajuPayPayer(controller, payer) {
 /**
  * Mapeia o método do Getfy para o nome aceito pelo SDK em `defaultMethod`.
  *
- * @param {string} method  pix|card|boleto|apple_pay|google_pay
+ * @param {string} method  pix|card|apple_pay|google_pay
  * @returns {string}
  */
 // IMPORTANTE: deve retornar EXATAMENTE os mesmos slugs que aparecem em
@@ -165,8 +165,6 @@ export function cajupayDefaultMethodFor(method) {
             return 'apple_pay';
         case 'google_pay':
             return 'google_pay';
-        case 'boleto':
-            return 'boleto';
         case 'pix':
             return 'pix';
         default:
