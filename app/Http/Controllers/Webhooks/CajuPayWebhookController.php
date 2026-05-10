@@ -110,15 +110,24 @@ class CajuPayWebhookController extends Controller
         switch ($eventType) {
             case 'checkout.payment.paid':
             case 'card.payment.succeeded':
-                ProcessPaymentWebhook::dispatchSync(self::SLUG, $dispatchChargeId, 'order.paid', 'paid', is_array($payload) ? $payload : []);
+                ProcessPaymentWebhook::dispatchSync(self::SLUG, $dispatchChargeId, 'order.paid', 'paid', array_merge(
+                    is_array($payload) ? $payload : [],
+                    ['webhook_source' => 'cajupay_hmac_verified']
+                ));
                 break;
             case 'checkout.payment.failed':
             case 'card.payment.failed':
-                ProcessPaymentWebhook::dispatchSync(self::SLUG, $dispatchChargeId, 'order.rejected', 'rejected', is_array($payload) ? $payload : []);
+                ProcessPaymentWebhook::dispatchSync(self::SLUG, $dispatchChargeId, 'order.rejected', 'rejected', array_merge(
+                    is_array($payload) ? $payload : [],
+                    ['webhook_source' => 'cajupay_hmac_verified']
+                ));
                 break;
             case 'checkout.payment.refunded':
             case 'card.payment.refunded':
-                ProcessPaymentWebhook::dispatchSync(self::SLUG, $dispatchChargeId, 'order.refunded', 'refunded', is_array($payload) ? $payload : []);
+                ProcessPaymentWebhook::dispatchSync(self::SLUG, $dispatchChargeId, 'order.refunded', 'refunded', array_merge(
+                    is_array($payload) ? $payload : [],
+                    ['webhook_source' => 'cajupay_hmac_verified']
+                ));
                 break;
             case 'checkout.payment.disputed':
             case 'card.payment.disputed':

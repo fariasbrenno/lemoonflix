@@ -42,9 +42,7 @@ class ProcessPaymentWebhook implements ShouldQueue
 
     public function handle(): void
     {
-        $order = Order::where('gateway', $this->gatewaySlug)
-            ->where('gateway_id', $this->transactionId)
-            ->first();
+        $order = $this->resolveOrderForGateway();
 
         if (! $order) {
             Log::info('ProcessPaymentWebhook: order not found for gateway transaction', [
@@ -80,16 +78,25 @@ class ProcessPaymentWebhook implements ShouldQueue
                 return;
             }
             $apiStatus = $this->fetchGatewayTransactionStatus($order);
+            $trustedCajuPayHmac = $this->gatewaySlug === 'cajupay'
+                && ($this->payload['webhook_source'] ?? '') === 'cajupay_hmac_verified';
             if ($apiStatus !== 'paid') {
-                Log::warning('ProcessPaymentWebhook: paid branch aborted (gateway reconfirm not paid)', [
+                if (! $trustedCajuPayHmac) {
+                    Log::warning('ProcessPaymentWebhook: paid branch aborted (gateway reconfirm not paid)', [
+                        'order_id' => $order->id,
+                        'gateway' => $this->gatewaySlug,
+                        'transaction_id' => $this->transactionId,
+                        'event' => $this->event,
+                        'api_status' => $apiStatus,
+                    ]);
+
+                    return;
+                }
+                Log::info('ProcessPaymentWebhook: CajuPay paid applied on HMAC-verified webhook (reconfirm not paid yet)', [
                     'order_id' => $order->id,
-                    'gateway' => $this->gatewaySlug,
                     'transaction_id' => $this->transactionId,
-                    'event' => $this->event,
                     'api_status' => $apiStatus,
                 ]);
-
-                return;
             }
             $order->update(['status' => 'completed']);
             $order->refresh();
@@ -172,6 +179,25 @@ class ProcessPaymentWebhook implements ShouldQueue
         }
     }
 
+    private function resolveOrderForGateway(): ?Order
+    {
+        if ($this->gatewaySlug !== 'cajupay') {
+            return Order::where('gateway', $this->gatewaySlug)
+                ->where('gateway_id', $this->transactionId)
+                ->first();
+        }
+
+        $tid = $this->transactionId;
+
+        return Order::where('gateway', 'cajupay')
+            ->where(function ($q) use ($tid) {
+                $q->where('gateway_id', $tid)
+                    ->orWhere('metadata->cajupay_checkout_session_id', $tid)
+                    ->orWhere('metadata->cajupay_session_token', $tid);
+            })
+            ->first();
+    }
+
     /**
      * Pagamento confirmado: formato comum `order.paid` ou Stripe `payment_intent.succeeded` (com status mapeado para paid).
      */
@@ -217,9 +243,20 @@ class ProcessPaymentWebhook implements ShouldQueue
                 return 'paid';
             }
             $meta = $order->metadata;
-            $sessionTok = is_array($meta) ? ($meta['cajupay_session_token'] ?? null) : null;
-            if (is_string($sessionTok) && $sessionTok !== '' && $sessionTok !== $this->transactionId) {
-                $secondary = $driver->getTransactionStatus($sessionTok, $credentials);
+            if (! is_array($meta)) {
+                $meta = [];
+            }
+            $sessionTok = isset($meta['cajupay_session_token']) && is_string($meta['cajupay_session_token'])
+                ? $meta['cajupay_session_token']
+                : '';
+            $checkoutSess = isset($meta['cajupay_checkout_session_id']) && is_string($meta['cajupay_checkout_session_id'])
+                ? $meta['cajupay_checkout_session_id']
+                : '';
+            foreach ([$sessionTok, $checkoutSess] as $alt) {
+                if ($alt === '' || $alt === $this->transactionId) {
+                    continue;
+                }
+                $secondary = $driver->getTransactionStatus($alt, $credentials);
                 if ($secondary === 'paid') {
                     return 'paid';
                 }
