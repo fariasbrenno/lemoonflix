@@ -145,6 +145,10 @@ Route::post('/checkout/cajupay/session', [\App\Http\Controllers\CheckoutControll
 Route::post('/checkout/cajupay/confirm-order', [\App\Http\Controllers\CheckoutController::class, 'cajupayConfirmOrder'])
     ->name('checkout.cajupay.confirm-order')
     ->middleware('throttle:30,1');
+// Mesmo handler que webhooks.cajupay — URL alternativa usada em docs/curl da CajuPay
+Route::post('/checkout/cajupay/webhook', [\App\Http\Controllers\Webhooks\CajuPayWebhookController::class, 'handle'])
+    ->name('webhooks.cajupay.checkout-alias')
+    ->middleware('throttle:60,1');
 // Pagar.me tokenizecard: se o submit HTML não for cancelado, evita POST na rota GET /c/{slug} (405).
 Route::post('/checkout/pagarme-tokenize-sink', fn () => response()->noContent())
     ->name('checkout.pagarme-tokenize-sink')

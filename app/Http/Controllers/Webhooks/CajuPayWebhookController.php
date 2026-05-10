@@ -52,8 +52,8 @@ class CajuPayWebhookController extends Controller
         }
 
         $object = $this->extractObject($payload);
-        $sessionId = is_array($object) ? ($object['checkout_session_id'] ?? null) : null;
-        $chargeId = is_array($object) ? ($object['cajupay_charge_id'] ?? null) : null;
+        $sessionId = $this->pickSessionId($object);
+        $chargeId = $this->pickChargeId($object);
 
         $order = null;
         if (is_string($sessionId) && $sessionId !== '') {
@@ -109,15 +109,19 @@ class CajuPayWebhookController extends Controller
 
         switch ($eventType) {
             case 'checkout.payment.paid':
+            case 'card.payment.succeeded':
                 ProcessPaymentWebhook::dispatchSync(self::SLUG, $dispatchChargeId, 'order.paid', 'paid', is_array($payload) ? $payload : []);
                 break;
             case 'checkout.payment.failed':
+            case 'card.payment.failed':
                 ProcessPaymentWebhook::dispatchSync(self::SLUG, $dispatchChargeId, 'order.rejected', 'rejected', is_array($payload) ? $payload : []);
                 break;
             case 'checkout.payment.refunded':
+            case 'card.payment.refunded':
                 ProcessPaymentWebhook::dispatchSync(self::SLUG, $dispatchChargeId, 'order.refunded', 'refunded', is_array($payload) ? $payload : []);
                 break;
             case 'checkout.payment.disputed':
+            case 'card.payment.disputed':
                 Log::info('CajuPayWebhook: disputa recebida', [
                     'order_id' => $order->id,
                     'charge_id' => $dispatchChargeId,
@@ -164,8 +168,49 @@ class CajuPayWebhookController extends Controller
             if (is_array($object)) {
                 return $object;
             }
+
             return $data;
         }
+        if (isset($payload['object']) && is_array($payload['object'])) {
+            return $payload['object'];
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $object
+     */
+    private function pickSessionId(?array $object): ?string
+    {
+        if ($object === null) {
+            return null;
+        }
+        foreach (['checkout_session_id', 'checkout_sessionId', 'session_id'] as $k) {
+            $v = $object[$k] ?? null;
+            if (is_string($v) && $v !== '') {
+                return $v;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $object
+     */
+    private function pickChargeId(?array $object): ?string
+    {
+        if ($object === null) {
+            return null;
+        }
+        foreach (['cajupay_charge_id', 'charge_id', 'payment_id'] as $k) {
+            $v = $object[$k] ?? null;
+            if (is_string($v) && $v !== '') {
+                return $v;
+            }
+        }
+
         return null;
     }
 

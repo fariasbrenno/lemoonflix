@@ -263,14 +263,58 @@ class CajuPayDriver implements GatewayDriver
                 return null;
             }
 
-            $raw = $data['status'] ?? ($data['state'] ?? null);
+            $raw = $this->extractPublicSessionStatus($data);
+            $normalized = $this->normalizePaymentStatus($raw);
+            if ($normalized !== null && $normalized !== 'paid' && $normalized !== 'pending' && $normalized !== 'cancelled') {
+                Log::debug('CajuPayDriver getSdkSessionStatus: status não mapeado para paid/pending/cancelled', [
+                    'raw' => $raw,
+                    'normalized' => $normalized,
+                ]);
+            }
 
-            return $this->normalizePaymentStatus($raw);
+            return $normalized;
         } catch (\Throwable $e) {
             Log::debug('CajuPayDriver getSdkSessionStatus', ['message' => $e->getMessage()]);
 
             return null;
         }
+    }
+
+    /**
+     * Extrai o estado de pagamento do JSON de GET /api/sdk/public/checkout/sessions/{token}.
+     * O contrato pode evoluir (campos no topo vs dentro de payment / latest_charge).
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function extractPublicSessionStatus(array $data): mixed
+    {
+        foreach (['status', 'state', 'checkout_status', 'session_status', 'payment_status'] as $key) {
+            if (! array_key_exists($key, $data)) {
+                continue;
+            }
+            $v = $data[$key];
+            if (is_string($v) && trim($v) !== '') {
+                return $v;
+            }
+        }
+
+        foreach (['payment', 'latest_payment', 'charge', 'latest_charge'] as $nest) {
+            $obj = $data[$nest] ?? null;
+            if (! is_array($obj)) {
+                continue;
+            }
+            foreach (['status', 'state'] as $key) {
+                if (! array_key_exists($key, $obj)) {
+                    continue;
+                }
+                $v = $obj[$key];
+                if (is_string($v) && trim($v) !== '') {
+                    return $v;
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -503,6 +547,11 @@ class CajuPayDriver implements GatewayDriver
                         'checkout.payment.failed',
                         'checkout.payment.refunded',
                         'checkout.payment.disputed',
+                        // Eventos card.* usados em alguns fluxos internos / docs CajuPay
+                        'card.payment.succeeded',
+                        'card.payment.failed',
+                        'card.payment.refunded',
+                        'card.payment.disputed',
                     ],
                 ]);
             }
@@ -543,13 +592,37 @@ class CajuPayDriver implements GatewayDriver
             return null;
         }
         $s = strtolower(trim($status));
-        if (in_array($s, ['paid', 'completed', 'settled', 'approved', 'confirmed'], true)) {
+        // Estados terminais de sucesso (PSP/Stripe-like + nomes internos possíveis)
+        if (in_array($s, [
+            'paid',
+            'completed',
+            'complete',
+            'settled',
+            'approved',
+            'confirmado',
+            'confirmed',
+            'success',
+            'successful',
+            'succeeded',
+            'done',
+            'captured',
+            'capture_succeeded',
+            'charge_succeeded',
+            'payment_succeeded',
+            'payment_completed',
+            'checkout_completed',
+            'authorized',
+            'authorised',
+            'paid_out',
+            'pago',
+            'aprovado',
+        ], true)) {
             return 'paid';
         }
-        if (in_array($s, ['pending', 'processing', 'waiting'], true)) {
+        if (in_array($s, ['pending', 'processing', 'waiting', 'requires_action', 'requires_payment_method', 'open'], true)) {
             return 'pending';
         }
-        if (in_array($s, ['cancelled', 'canceled', 'expired', 'failed', 'refunded'], true)) {
+        if (in_array($s, ['cancelled', 'canceled', 'expired', 'failed', 'refunded', 'rejected', 'refused'], true)) {
             return 'cancelled';
         }
 
