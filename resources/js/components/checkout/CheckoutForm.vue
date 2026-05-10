@@ -84,6 +84,24 @@ function getCsrfToken() {
     return '';
 }
 
+/** Inertia `visit` com X-Inertia falha em domínios externos; obrigatório full navigation. */
+function visitPostCheckoutUrl(url) {
+    if (typeof window === 'undefined' || !url || typeof url !== 'string') return;
+    const trimmed = url.trim();
+    if (trimmed === '') return;
+    try {
+        const abs = new URL(trimmed, window.location.href);
+        if (abs.origin !== window.location.origin) {
+            window.location.assign(abs.href);
+            return;
+        }
+    } catch (_) {
+        window.location.assign(trimmed);
+        return;
+    }
+    router.visit(trimmed);
+}
+
 function tf(key, fallback = '') {
     const v = typeof t === 'function' ? t(key) : null;
     if (!v || v === key) return fallback;
@@ -926,7 +944,7 @@ async function pollCajuPayOrderStatus() {
             stopCajuPayPolling();
             cardApproved.value = true;
             cajupayApprovedRedirectUrl.value = data.redirect_url;
-            setTimeout(() => router.visit(data.redirect_url), 1200);
+            setTimeout(() => visitPostCheckoutUrl(data.redirect_url), 1200);
             return;
         }
         if (['rejected', 'cancelled', 'failed'].includes(data.status)) {

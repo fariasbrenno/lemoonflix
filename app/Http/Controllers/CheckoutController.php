@@ -2135,7 +2135,17 @@ class CheckoutController extends Controller
                     $driver = GatewayRegistry::driver($gatewaySlug);
                     $efiNeedsCert = $gatewaySlug === 'efi' && empty($credentials['certificate_path'] ?? '');
                     if ($driver && $credentials !== [] && ! $efiNeedsCert) {
-                        $apiStatus = $driver->getTransactionStatus((string) $order->gateway_id, $credentials);
+                        // CajuPay: gateway_id costuma ser checkout_session_id (UUID); o status na
+                        // API pública usa o token opaco salvo em metadata (ver createUserAndOrderFromDraft).
+                        $statusLookupId = (string) $order->gateway_id;
+                        if ($gatewaySlug === 'cajupay') {
+                            $meta = $order->metadata;
+                            $sessionTok = is_array($meta) ? ($meta['cajupay_session_token'] ?? null) : null;
+                            if (is_string($sessionTok) && $sessionTok !== '') {
+                                $statusLookupId = $sessionTok;
+                            }
+                        }
+                        $apiStatus = $driver->getTransactionStatus($statusLookupId, $credentials);
                         if ($apiStatus === 'paid') {
                             ProcessPaymentWebhook::dispatchSync(
                                 $gatewaySlug,

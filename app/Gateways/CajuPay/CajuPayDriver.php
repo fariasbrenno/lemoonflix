@@ -163,6 +163,17 @@ class CajuPayDriver implements GatewayDriver
             }
         }
 
+        // Pedidos CajuPay guardam checkout_session_id (UUID) em gateway_id. O endpoint
+        // público GET /sdk/public/checkout/sessions/{id} responde por esse id; a heurística
+        // acima evita UUID para não confundir com payment_id — aqui tentamos a sessão
+        // primeiro e, se não for sessão (404 / vazio), caímos em /api/payments.
+        if ($this->looksLikeUuid($transactionId)) {
+            $sdkStatus = $this->getSdkSessionStatus($transactionId, $credentials);
+            if ($sdkStatus !== null) {
+                return $sdkStatus;
+            }
+        }
+
         if (! $this->hasApiKeys($credentials)) {
             return null;
         }
@@ -213,11 +224,16 @@ class CajuPayDriver implements GatewayDriver
             return false;
         }
         // UUID v4: 8-4-4-4-12 hex with dashes
-        if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $value)) {
+        if ($this->looksLikeUuid($value)) {
             return false;
         }
 
         return true;
+    }
+
+    private function looksLikeUuid(string $value): bool
+    {
+        return (bool) preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $value);
     }
 
     /**

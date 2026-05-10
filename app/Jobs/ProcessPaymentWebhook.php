@@ -211,6 +211,23 @@ class ProcessPaymentWebhook implements ShouldQueue
             return null;
         }
 
+        if ($this->gatewaySlug === 'cajupay') {
+            $primary = $driver->getTransactionStatus($this->transactionId, $credentials);
+            if ($primary === 'paid') {
+                return 'paid';
+            }
+            $meta = $order->metadata;
+            $sessionTok = is_array($meta) ? ($meta['cajupay_session_token'] ?? null) : null;
+            if (is_string($sessionTok) && $sessionTok !== '' && $sessionTok !== $this->transactionId) {
+                $secondary = $driver->getTransactionStatus($sessionTok, $credentials);
+                if ($secondary === 'paid') {
+                    return 'paid';
+                }
+            }
+
+            return $primary;
+        }
+
         return $driver->getTransactionStatus($this->transactionId, $credentials);
     }
 
