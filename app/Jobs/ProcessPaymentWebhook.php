@@ -384,10 +384,21 @@ class ProcessPaymentWebhook implements ShouldQueue
             }
         }
 
-        if ($updates !== []) {
-            if ($meta !== ($order->metadata ?? [])) {
-                $updates['metadata'] = $meta;
-            }
+        $settlementCents = $object['settlement_amount_cents'] ?? null;
+        if (is_numeric($settlementCents) && (int) $settlementCents > 0) {
+            $meta['settlement_amount_cents'] = (int) $settlementCents;
+        }
+        $settlementCurrency = $object['settlement_currency'] ?? null;
+        if (is_string($settlementCurrency) && trim($settlementCurrency) !== '') {
+            $meta['settlement_currency'] = MoneyMinorUnits::normalizeCurrencyCode($settlementCurrency);
+        }
+        $fxRate = $object['fx_rate'] ?? null;
+        if ($fxRate !== null && $fxRate !== '') {
+            $meta['fx_rate'] = is_string($fxRate) ? $fxRate : (string) $fxRate;
+        }
+
+        if ($updates !== [] || $meta !== ($order->metadata ?? [])) {
+            $updates['metadata'] = $meta;
             $order->update($updates);
         }
     }

@@ -1441,6 +1441,8 @@ class CheckoutController extends Controller
             'payment_method' => ['required', 'string', 'in:card,apple_pay,google_pay'],
             'checkout_session_token' => ['nullable', 'string', 'max:64'],
             'display_currency' => ['nullable', 'string', 'max:8', Rule::in($allowedDisplayCurrencies)],
+            'billing_country' => ['nullable', 'string', 'size:2'],
+            'currency_user_selected' => ['nullable', 'boolean'],
             'coupon_code' => ['nullable', 'string', 'max:64'],
             'utm_source' => ['nullable', 'string', 'max:255'],
             'utm_medium' => ['nullable', 'string', 'max:255'],
@@ -1454,10 +1456,15 @@ class CheckoutController extends Controller
             $displayCurrency = 'BRL';
         }
 
-        // Caju Global: se o checkout exibe moeda estrangeira, a sessão SDK usa essa moeda
-        // (cartões internacionais / wallets). Em BRL, cobrança em real.
-        // Valor/moeda liquidados podem divergir levemente — webhook é a fonte da verdade.
-        $chargeInDisplayCurrency = $displayCurrency !== 'BRL';
+        $billingCountry = $this->resolveBillingCountryForCheckout($request, $validated);
+        $currencyUserSelected = filter_var($validated['currency_user_selected'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+        // Caju Global: cobrança na moeda de vitrine só fora do BR ou se o cliente escolheu moeda manualmente.
+        $chargeInDisplayCurrency = $this->shouldChargeCajuPayInDisplayCurrency(
+            $displayCurrency,
+            $billingCountry,
+            $currencyUserSelected
+        );
 
         try {
             $context = $this->calculateOrderContext(
@@ -1473,7 +1480,9 @@ class CheckoutController extends Controller
         $chargeCurrency = strtoupper((string) ($context['charge_currency'] ?? 'BRL'));
         $totalAmount = (float) ($chargeInDisplayCurrency ? $context['charge_amount'] : $context['total_amount']);
         $baseAmount = (float) $context['base_amount'];
-        $displayAmount = $chargeInDisplayCurrency ? $totalAmount : $totalAmount;
+        $displayAmount = $chargeInDisplayCurrency
+            ? $totalAmount
+            : (float) $context['total_amount'];
 
         $credential = GatewayCredential::forTenant($product->tenant_id)
             ->where('gateway_slug', 'cajupay')
@@ -1548,6 +1557,11 @@ class CheckoutController extends Controller
         $availableMethods = $driver->getSessionAvailableMethods($sessionResult['token'], $credentials);
 
         $pollingToken = Str::random(32);
+        $checkoutSessionId = $sessionResult['checkout_session_id'];
+        if (is_string($checkoutSessionId) && $checkoutSessionId !== '') {
+            Cache::put('cajupay_session_by_checkout.' . $checkoutSessionId, $pollingToken, now()->addMinutes(30));
+        }
+
         Cache::put('cajupay_draft.' . $pollingToken, [
             'product_id' => $product->id,
             'product_offer_id' => $context['offer']?->id,
@@ -2613,6 +2627,44 @@ class CheckoutController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * Caju Global: cobrança na moeda de vitrine apenas se não for BRL e (comprador fora do BR ou escolha manual).
+     */
+    private function shouldChargeCajuPayInDisplayCurrency(
+        string $displayCurrency,
+        ?string $billingCountry,
+        bool $currencyUserSelected
+    ): bool {
+        $display = strtoupper(trim($displayCurrency));
+        if ($display === '' || $display === 'BRL') {
+            return false;
+        }
+
+        $country = $billingCountry !== null ? strtoupper(trim($billingCountry)) : null;
+        if ($country === 'BR' && ! $currencyUserSelected) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     */
+    private function resolveBillingCountryForCheckout(Request $request, array $validated): ?string
+    {
+        $fromRequest = isset($validated['billing_country']) ? strtoupper(trim((string) $validated['billing_country'])) : '';
+        if (strlen($fromRequest) === 2) {
+            return $fromRequest;
+        }
+
+        $geo = app(GeoIp::class);
+        $suggestions = $geo->getSuggestionsForRequest($request);
+        $code = $suggestions['country_code'] ?? null;
+
+        return is_string($code) && strlen($code) === 2 ? strtoupper($code) : null;
     }
 
     /**

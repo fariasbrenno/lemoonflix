@@ -91,11 +91,31 @@ class CajuPayWebhookController extends Controller
         }
 
         if (! $order) {
-            Log::debug('CajuPayWebhook: order not found', [
-                'event' => $eventType,
-                'session_id' => $sessionId,
-                'charge_id' => $chargeId,
-            ]);
+            $isPaidEvent = in_array($eventType, [
+                'checkout.payment.paid',
+                'card.payment.succeeded',
+            ], true);
+            if ($isPaidEvent && is_string($sessionId) && $sessionId !== '') {
+                $pollingToken = \Illuminate\Support\Facades\Cache::get('cajupay_session_by_checkout.' . $sessionId);
+                $hasDraft = is_string($pollingToken) && $pollingToken !== ''
+                    && \Illuminate\Support\Facades\Cache::has('cajupay_draft.' . $pollingToken);
+                Log::warning('CajuPayWebhook: pagamento aprovado sem pedido no Getfy', [
+                    'event' => $eventType,
+                    'session_id' => $sessionId,
+                    'charge_id' => $chargeId,
+                    'draft_still_in_cache' => $hasDraft,
+                    'hint' => $hasDraft
+                        ? 'Cliente pode ter pago na wallet antes do confirm-order; peça para preencher dados e usar "Tentar novamente".'
+                        : 'Verifique se confirm-order foi chamado antes do pagamento.',
+                ]);
+            } else {
+                Log::debug('CajuPayWebhook: order not found', [
+                    'event' => $eventType,
+                    'session_id' => $sessionId,
+                    'charge_id' => $chargeId,
+                ]);
+            }
+
             return response()->json(['received' => true]);
         }
 

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\ApiCheckoutSession;
 use App\Models\CheckoutSession;
 use App\Models\Order;
+use App\Support\OrderReportingAmounts;
 use Illuminate\Support\Facades\Http;
 
 class UtmifyService
@@ -46,7 +47,8 @@ class UtmifyService
         }
 
         $orderId = $order->gateway_id ?: (string) $order->id;
-        $paymentMethod = $this->mapPaymentMethod($order->gateway);
+        $paymentMethod = $this->mapPaymentMethod($order);
+        $totalCentsBrl = OrderReportingAmounts::totalCentsBrl($order);
         $createdAt = $order->created_at->utc()->format('Y-m-d H:i:s');
         $approvedDate = $options['approved_at'] ?? ($utmifyStatus === 'paid' ? $order->updated_at->utc()->format('Y-m-d H:i:s') : null);
         $refundedAt = $options['refunded_at'] ?? null;
@@ -83,7 +85,7 @@ class UtmifyService
                 'planId' => $planId ? (string) $planId : null,
                 'planName' => $planName,
                 'quantity' => 1,
-                'priceInCents' => (int) round((float) $item->amount * 100),
+                'priceInCents' => OrderReportingAmounts::lineCentsBrl($order, (float) $item->amount),
             ];
         }
 
@@ -95,7 +97,7 @@ class UtmifyService
                 'planId' => null,
                 'planName' => null,
                 'quantity' => 1,
-                'priceInCents' => (int) round((float) $order->amount * 100),
+                'priceInCents' => $totalCentsBrl,
             ];
         }
 
@@ -104,11 +106,10 @@ class UtmifyService
 
         $trackingParameters = $this->buildMergedTrackingParameters($session, $apiMeta, $order);
 
-        $totalCents = (int) round((float) $order->amount * 100);
         $commission = [
-            'totalPriceInCents' => $totalCents,
+            'totalPriceInCents' => $totalCentsBrl,
             'gatewayFeeInCents' => 0,
-            'userCommissionInCents' => $totalCents,
+            'userCommissionInCents' => $totalCentsBrl,
         ];
 
         $body = [
@@ -198,7 +199,20 @@ class UtmifyService
         return $out;
     }
 
-    private function mapPaymentMethod(?string $gateway): string
+    private function mapPaymentMethod(Order $order): string
+    {
+        $meta = is_array($order->metadata) ? $order->metadata : [];
+        $checkoutMethod = strtolower((string) ($meta['checkout_payment_method'] ?? ''));
+
+        return match ($checkoutMethod) {
+            'pix', 'pix_auto' => 'pix',
+            'boleto' => 'boleto',
+            'card', 'apple_pay', 'google_pay' => 'credit_card',
+            default => $this->mapPaymentMethodFromGatewaySlug($order->gateway),
+        };
+    }
+
+    private function mapPaymentMethodFromGatewaySlug(?string $gateway): string
     {
         if (! $gateway) {
             return 'pix';
@@ -210,7 +224,7 @@ class UtmifyService
         if (str_contains($g, 'boleto') || str_contains($g, 'ticket')) {
             return 'boleto';
         }
-        if (str_contains($g, 'card') || str_contains($g, 'credit') || str_contains($g, 'cartao')) {
+        if (str_contains($g, 'card') || str_contains($g, 'credit') || str_contains($g, 'cartao') || str_contains($g, 'cajupay')) {
             return 'credit_card';
         }
 

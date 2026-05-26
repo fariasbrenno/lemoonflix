@@ -166,6 +166,15 @@ function applyGeoLocaleFromServer() {
             ? String(props.suggested_country_code).toUpperCase().trim()
             : CHECKOUT_GEO_UNKNOWN;
         const last = localStorage.getItem(geoKey);
+        const isBrazil = normalized === 'BR';
+        if (isBrazil) {
+            setLocale(props.suggested_locale || 'pt_BR');
+            setCurrency('BRL');
+            if (last !== normalized) {
+                localStorage.setItem(geoKey, normalized);
+            }
+            return;
+        }
         if (last === normalized) {
             return;
         }
@@ -280,10 +289,21 @@ const pixelCurrency = computed(() =>
         : 'BRL'
 );
 
+function pixelCheckoutTotal() {
+    const code = pixelCurrency.value;
+    if (code !== 'BRL') {
+        const foreign = Math.round((Number(checkoutTotalInCurrency.value) || 0) * 100) / 100;
+        if (foreign > 0) {
+            return foreign;
+        }
+    }
+    return Math.round((Number(checkoutTotalBrl.value) || 0) * 100) / 100;
+}
+
 function fireInitiateCheckoutIfNeeded() {
     const api = conversionPixelsRef.value;
     if (!pixelsReady.value || !api?.fireInitiateCheckout) return;
-    const total = Math.round((Number(checkoutTotalBrl.value) || 0) * 100) / 100;
+    const total = pixelCheckoutTotal();
     if (total <= 0) return;
     if (
         lastInitiateCheckoutTotal !== null &&
@@ -325,7 +345,7 @@ function onConversionPixelsReady() {
     tryFirePendingPurchase();
 }
 
-watch(checkoutTotalBrl, () => {
+watch([checkoutTotalBrl, checkoutTotalInCurrency, pixelCurrency], () => {
     if (!initiateCheckoutFiredForLoad || !pixelsReady.value) return;
     if (initiateCheckoutDebounceTimer) clearTimeout(initiateCheckoutDebounceTimer);
     initiateCheckoutDebounceTimer = setTimeout(() => {
@@ -492,6 +512,7 @@ const hasCustomBodyEnd = computed(() => String(customBodyEndHtml.value).trim() !
                             :display-currency="displayCurrency"
                             :format-price="formatPrice"
                             :suggested-country-code="props.suggested_country_code"
+                            :locale-storage-key="storageKey"
                             :card-payee-code="card_payee_code || ''"
                             :card-efi-sandbox="card_efi_sandbox"
                             :card-stripe-publishable-key="card_stripe_publishable_key || ''"

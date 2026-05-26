@@ -9,7 +9,11 @@ const props = defineProps({
     containerId: { type: String, default: 'cajupay-method' },
     /** Apple/Google Pay: chamado imediatamente antes do 1º `confirm()` do SDK (materializar Order no Getfy). */
     beforeWalletPrime: { type: Function, default: null },
+    /** Espelha validateCajuPayCustomerFields no host — bloqueia priming da wallet sem pedido. */
+    payerReadyForPrime: { type: Boolean, default: false },
 });
+
+const emit = defineEmits(['wallet-payment-completed']);
 
 const error = ref('');
 const loading = ref(false);
@@ -33,6 +37,7 @@ const containerSelector = computed(() => `#${props.containerId}`);
 // PIX não precisa — gera no único confirm do Pagar.
 const needsPriming = computed(() => ['card', 'apple_pay', 'google_pay'].includes(props.paymentMethod));
 const isCardMethod = computed(() => props.paymentMethod === 'card');
+const isWalletMethod = computed(() => props.paymentMethod === 'apple_pay' || props.paymentMethod === 'google_pay');
 
 function destroyController() {
     try {
@@ -71,8 +76,11 @@ async function tryMount() {
             // CajuPay garante a phase "awaiting_card_details" para isso.
             onStatus: (event) => {
                 const phase = event?.phase || event?.status || '';
-                if (phase === 'awaiting_card_details') {
+                if (phase === 'awaiting_card_details' || phase === 'awaiting_wallet_confirmation') {
                     cardFieldReady.value = true;
+                }
+                if (phase === 'completed') {
+                    emit('wallet-payment-completed', event);
                 }
             },
         });
@@ -103,6 +111,12 @@ async function tryMount() {
  */
 async function primeCardField() {
     if (!controller.value || cardPrimingInFlight.value || cardFieldReady.value) return;
+
+    if (isWalletMethod.value && !props.payerReadyForPrime) {
+        error.value = 'Preencha e-mail e os dados obrigatórios acima para usar a carteira.';
+        return;
+    }
+
     cardPrimingInFlight.value = true;
 
     // Sincroniza o payer ANTES da cobrança ser criada no PSP. Sem isso, a 1ª
@@ -114,10 +128,7 @@ async function primeCardField() {
     });
 
     try {
-        if (
-            (props.paymentMethod === 'apple_pay' || props.paymentMethod === 'google_pay')
-            && typeof props.beforeWalletPrime === 'function'
-        ) {
+        if (isWalletMethod.value && typeof props.beforeWalletPrime === 'function') {
             await props.beforeWalletPrime();
         }
         await controller.value.confirm();
@@ -170,13 +181,12 @@ watch(() => props.paymentMethod, () => {
 // que ele preenche.
 let primeRetryTimer = null;
 watch(
-    () => props.initialPayer,
-    (val) => {
+    () => [props.payerReadyForPrime, props.initialPayer],
+    () => {
         if (!needsPriming.value) return;
         if (!controller.value) return;
         if (cardFieldReady.value) return;
-        const hasMinPayer = (val?.name || '').trim() !== '' && (val?.email || '').trim() !== '';
-        if (!hasMinPayer) return;
+        if (isWalletMethod.value && !props.payerReadyForPrime) return;
         clearTimeout(primeRetryTimer);
         primeRetryTimer = setTimeout(() => { primeCardField(); }, 400);
     },

@@ -2395,28 +2395,29 @@ async function submitMedDefense(disputeId, text, filePaths) {
 ## INSTRUÇÕES PARA O MODELO
 
 1. **PIX** permanece apenas em **BRL**.
-2. **Caju Global** (cartão, boleto, Apple Pay, Google Pay) aceita qualquer moeda **ISO 4217** válida no campo `currency`.
-3. `amount_cents` está sempre na **menor unidade** da moeda (centavos para BRL/USD; unidade inteira para JPY, KRW, etc.).
-4. No webhook `checkout.payment.paid`, `currency` e `amount_cents` refletem o **pagamento efetivo** (sincronizado após confirmação).
-5. Não converter valores para BRL na API — o integrador exibe na moeda recebida.
+2. Integrador envia `currency` + `amount_cents` na **moeda de vitrine** (USD, EUR, …).
+3. Lojistas BR (Caju Global): cobrança liquidada em **BRL** (conversão PTAX BCB automática).
+4. Webhook/respostas: `amount_cents`/`currency` = vitrine; `settlement_*` + `fx_rate` = BRL cobrado.
+5. Confirm embedded: `charge_amount_cents`/`charge_currency` no `next_action` para wallets.
+6. Conversão automática no checkout hospedado (roadmap) não aplica ao formulário embutido atual.
 
-## Webhook `checkout.payment.paid` (USD)
+## Webhook `checkout.payment.paid` (USD vitrine)
 
 ```json
 {
   "type": "checkout.payment.paid",
   "data": {
     "object": {
-      "gateway": "cajupay",
-      "checkout_session_id": "uuid-sessao",
-      "cajupay_charge_id": "uuid-cobranca",
       "amount_cents": 1999,
+      "currency": "usd",
+      "settlement_amount_cents": 11000,
+      "settlement_currency": "brl",
+      "fx_rate": "5.502500",
       "fee_cents": 120,
-      "net_cents": 1879,
-      "currency": "usd"
+      "net_cents": 1879
     }
   }
 }
 ```
 
-Erros: `invalid_currency`, `pix_only_requires_brl`.
+Erros: `invalid_currency`, `pix_only_requires_brl`, `fx_conversion_failed`.

@@ -237,6 +237,8 @@ const props = defineProps({
     displayCurrency: { type: String, default: 'BRL' },
     /** Código do país (ISO) detectado por geo para pré-selecionar o DDI do telefone */
     suggestedCountryCode: { type: String, default: null },
+    /** Chave do checkout (slug) para flags manual/geo no localStorage — deve bater com Show.vue */
+    localeStorageKey: { type: String, default: 'default' },
     /** Payee code Efí para tokenização de cartão (obrigatório quando payment_method === 'card' com gateway efi). */
     cardPayeeCode: { type: String, default: '' },
     /** Se o gateway Efí está em homologação: token deve ser gerado com setEnvironment('sandbox'). */
@@ -329,25 +331,136 @@ watch(cardPagarmePublicKey, (next, prev) => {
 
 const countryCodes = [
     { code: '55', country: 'BR', label: 'Brasil', flag: '🇧🇷' },
-    { code: '1', country: 'US', label: 'EUA', flag: '🇺🇸' },
+    { code: '1', country: 'US', label: 'Estados Unidos', flag: '🇺🇸' },
+    { code: '1', country: 'CA', label: 'Canadá', flag: '🇨🇦' },
     { code: '351', country: 'PT', label: 'Portugal', flag: '🇵🇹' },
     { code: '54', country: 'AR', label: 'Argentina', flag: '🇦🇷' },
     { code: '52', country: 'MX', label: 'México', flag: '🇲🇽' },
     { code: '57', country: 'CO', label: 'Colômbia', flag: '🇨🇴' },
+    { code: '56', country: 'CL', label: 'Chile', flag: '🇨🇱' },
+    { code: '51', country: 'PE', label: 'Peru', flag: '🇵🇪' },
     { code: '34', country: 'ES', label: 'Espanha', flag: '🇪🇸' },
     { code: '39', country: 'IT', label: 'Itália', flag: '🇮🇹' },
     { code: '33', country: 'FR', label: 'França', flag: '🇫🇷' },
     { code: '49', country: 'DE', label: 'Alemanha', flag: '🇩🇪' },
     { code: '44', country: 'GB', label: 'Reino Unido', flag: '🇬🇧' },
+    { code: '61', country: 'AU', label: 'Austrália', flag: '🇦🇺' },
+    { code: '91', country: 'IN', label: 'Índia', flag: '🇮🇳' },
     { code: '81', country: 'JP', label: 'Japão', flag: '🇯🇵' },
 ];
 
-function getDefaultCountryCode() {
-    const suggested = (props.suggestedCountryCode || '').toUpperCase();
-    if (!suggested) return '55';
-    const found = countryCodes.find((c) => c.country === suggested);
-    return found ? found.code : '55';
+/** DDI para países detectados por geo que não estão na lista fixa acima. */
+const EXTRA_DIAL_BY_ISO = {
+    UY: '598', PY: '595', BO: '591', EC: '593', VE: '58', CR: '506', PA: '507',
+    DO: '1', GT: '502', HN: '504', NI: '505', SV: '503', CU: '53', PR: '1',
+    IE: '353', CH: '41', AT: '43', NL: '31', BE: '32', SE: '46', NO: '47',
+    DK: '45', PL: '48', CZ: '420', RO: '40', HU: '36', GR: '30', TR: '90',
+    ZA: '27', AE: '971', SA: '966', IL: '972', KR: '82', CN: '86', PH: '63',
+    ID: '62', MY: '60', SG: '65', TH: '66', VN: '84', NZ: '64',
+};
+
+const EXTRA_COUNTRY_LABELS = {
+    UY: 'Uruguai', PY: 'Paraguai', BO: 'Bolívia', EC: 'Equador', VE: 'Venezuela',
+    CR: 'Costa Rica', PA: 'Panamá', DO: 'Rep. Dominicana', GT: 'Guatemala',
+    IE: 'Irlanda', CH: 'Suíça', AT: 'Áustria', NL: 'Holanda', BE: 'Bélgica',
+    SE: 'Suécia', NO: 'Noruega', DK: 'Dinamarca', PL: 'Polônia', CZ: 'Rep. Tcheca',
+    RO: 'Romênia', HU: 'Hungria', GR: 'Grécia', TR: 'Turquia', ZA: 'África do Sul',
+    AE: 'Emirados Árabes', SA: 'Arábia Saudita', IL: 'Israel', KR: 'Coreia do Sul',
+    CN: 'China', PH: 'Filipinas', ID: 'Indonésia', MY: 'Malásia', SG: 'Singapura',
+    TH: 'Tailândia', VN: 'Vietnã', NZ: 'Nova Zelândia',
+};
+
+function resolveCountryOption(iso) {
+    const code = String(iso || '').toUpperCase().trim();
+    if (code.length !== 2) {
+        return null;
+    }
+    const found = countryCodes.find((c) => c.country === code);
+    if (found) {
+        return found;
+    }
+    const dial = EXTRA_DIAL_BY_ISO[code];
+    if (!dial) {
+        return null;
+    }
+    return {
+        code: dial,
+        country: code,
+        label: EXTRA_COUNTRY_LABELS[code] || code,
+        flag: '',
+    };
 }
+
+function initialPhoneFromGeo() {
+    const iso = (props.suggestedCountryCode || '').toUpperCase().trim();
+    const opt = iso ? resolveCountryOption(iso) : null;
+    if (opt) {
+        return { dial: opt.code, iso: opt.country };
+    }
+    return { dial: '55', iso: 'BR' };
+}
+
+const initialPhoneGeo = initialPhoneFromGeo();
+/** ISO da bandeira (BR, US, …) — necessário quando vários países compartilham o mesmo DDI (+1). */
+const phoneCountryIso = ref(initialPhoneGeo.iso);
+
+function phoneCountryManualStorageKey() {
+    return `checkout_phone_country_manual_${props.localeStorageKey}`;
+}
+
+function isPhoneCountryManual() {
+    try {
+        return typeof localStorage !== 'undefined' && localStorage.getItem(phoneCountryManualStorageKey()) === '1';
+    } catch (_) {
+        return false;
+    }
+}
+
+function markPhoneCountryManual() {
+    try {
+        if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(phoneCountryManualStorageKey(), '1');
+        }
+    } catch (_) {}
+}
+
+function applyGeoPhoneCountry() {
+    if (isPhoneCountryManual()) {
+        return;
+    }
+    const iso = (props.suggestedCountryCode || '').toUpperCase().trim();
+    if (!iso || iso.length !== 2) {
+        return;
+    }
+    const opt = resolveCountryOption(iso);
+    if (!opt) {
+        return;
+    }
+    form.country_code = opt.code;
+    phoneCountryIso.value = opt.country;
+}
+
+/** País sugerido por geo primeiro no dropdown; inclui entrada dinâmica se o geo não estiver na lista fixa. */
+const sortedCountryCodes = computed(() => {
+    const iso = (props.suggestedCountryCode || '').toUpperCase().trim();
+    const list = [...countryCodes];
+    if (iso && !list.some((c) => c.country === iso)) {
+        const extra = resolveCountryOption(iso);
+        if (extra) {
+            list.push(extra);
+        }
+    }
+    if (!iso) {
+        return list;
+    }
+    const idx = list.findIndex((c) => c.country === iso);
+    if (idx <= 0) {
+        return list;
+    }
+    const ordered = [...list];
+    const [first] = ordered.splice(idx, 1);
+    return [first, ...ordered];
+});
 
 const form = useForm({
     product_id: props.productId,
@@ -356,7 +469,7 @@ const form = useForm({
     name: '',
     cpf: '',
     phone: '',
-    country_code: getDefaultCountryCode(),
+    country_code: initialPhoneGeo.dial,
     coupon_code: '',
     address_zipcode: '',
     address_street: '',
@@ -549,11 +662,12 @@ const showEditForm = ref(true);
 let saveDraftTimeout = null;
 
 function loadDraft() {
+    let restoredPhoneCountry = false;
     try {
         const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
-        if (!raw) return;
+        if (!raw) return false;
         const draft = JSON.parse(raw);
-        if (!draft || typeof draft !== 'object') return;
+        if (!draft || typeof draft !== 'object') return false;
         if (draft.email) form.email = draft.email;
         if (draft.name != null) form.name = draft.name;
         if (draft.cpf != null) {
@@ -564,9 +678,22 @@ function loadDraft() {
             phoneDigits.value = String(draft.phone_digits).replace(/\D/g, '').slice(0, 15);
             phoneDisplay.value = formatPhone(phoneDigits.value, draft.country_code || form.country_code);
         }
-        if (draft.country_code) form.country_code = draft.country_code;
+        if (draft.country_code) {
+            form.country_code = draft.country_code;
+            restoredPhoneCountry = true;
+            const isoFromDraft = typeof draft.phone_country_iso === 'string' ? draft.phone_country_iso.toUpperCase() : '';
+            if (isoFromDraft) {
+                phoneCountryIso.value = isoFromDraft;
+            } else {
+                const match = countryCodes.find((c) => c.code === draft.country_code);
+                if (match) {
+                    phoneCountryIso.value = match.country;
+                }
+            }
+        }
         if (draft.email && draft.email.trim() !== '') showEditForm.value = false;
     } catch (_) {}
+    return restoredPhoneCountry;
 }
 
 function saveDraft() {
@@ -581,14 +708,25 @@ function saveDraft() {
                 cpf: (form.cpf || '').replace(/\D/g, ''),
                 phone_digits: phoneDigits.value || '',
                 country_code: form.country_code || '55',
+                phone_country_iso: phoneCountryIso.value || '',
             };
             if (typeof localStorage !== 'undefined') localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
         } catch (_) {}
     }, 400);
 }
 
+watch(
+    () => props.suggestedCountryCode,
+    () => {
+        applyGeoPhoneCountry();
+    }
+);
+
 onMounted(() => {
-    loadDraft();
+    const hadPhoneCountryInDraft = loadDraft();
+    if (!hadPhoneCountryInDraft) {
+        applyGeoPhoneCountry();
+    }
     try {
         const merged = mergeStoredUtms();
         if (Object.keys(merged).length > 0 && typeof sessionStorage !== 'undefined') {
@@ -725,11 +863,22 @@ watch(
     }
 );
 const flagImgUrl = (code) => `https://flagcdn.com/24x18/${(code || 'br').toLowerCase()}.png`;
-const currentCountry = computed(() => countryCodes.find((c) => c.code === form.country_code)?.country ?? 'BR');
-const currentCountryOption = computed(() => countryCodes.find((c) => c.code === form.country_code) || countryCodes[0]);
+const currentCountry = computed(() => phoneCountryIso.value || 'BR');
+const currentCountryOption = computed(() => {
+    const iso = phoneCountryIso.value;
+    if (iso) {
+        const byIso = sortedCountryCodes.value.find((c) => c.country === iso);
+        if (byIso) {
+            return byIso;
+        }
+    }
+    return sortedCountryCodes.value.find((c) => c.code === form.country_code) || sortedCountryCodes.value[0];
+});
 
 function selectPhoneCountry(c) {
     form.country_code = c.code;
+    phoneCountryIso.value = c.country;
+    markPhoneCountryManual();
     phoneCountryOpen.value = false;
 }
 
@@ -898,6 +1047,24 @@ const isCajuPayWalletSdk = computed(() => {
         && (form.payment_method === 'apple_pay' || form.payment_method === 'google_pay');
 });
 
+/** Espelha validateCajuPayCustomerFields sem marcar erros — usado para liberar priming da wallet. */
+const cajupayPayerReadyForPrime = computed(() => {
+    const email = (form.email || '').trim();
+    if (email.length < 5 || !/.+@.+\..+/.test(email)) {
+        return false;
+    }
+    if (showName.value && (form.name || '').trim().length < 2) {
+        return false;
+    }
+    if (showCpf.value && (form.cpf || '').replace(/\D/g, '').length !== 11) {
+        return false;
+    }
+    if (showPhone.value && (phoneDigits.value || '').length < 8) {
+        return false;
+    }
+    return true;
+});
+
 const checkoutChargeCurrency = computed(() => {
     const c = props.displayCurrency;
     return typeof c === 'string' && c.trim() ? c.trim().toUpperCase() : 'BRL';
@@ -942,16 +1109,32 @@ function stopCajuPayPolling() {
  * Payload da CRIAÇÃO da sessão CajuPay (draft, sem dados do cliente). A validação dos dados
  * do cliente acontece só no clique do "Pagar", em validateCajuPayCustomerFields().
  */
+function checkoutCurrencyUserSelected() {
+    try {
+        if (typeof window === 'undefined') return false;
+        return !!localStorage.getItem(`checkout_locale_manual_${props.localeStorageKey}`);
+    } catch {
+        return false;
+    }
+}
+
 function buildCajuPaySessionPayload() {
     const payload = {
         product_id: form.product_id,
         payment_method: form.payment_method,
         coupon_code: (form.coupon_code || '').trim() || null,
+        currency_user_selected: checkoutCurrencyUserSelected(),
     };
     if (props.productOfferId) payload.product_offer_id = props.productOfferId;
     if (props.subscriptionPlanId) payload.subscription_plan_id = props.subscriptionPlanId;
     if (props.checkoutSessionToken) payload.checkout_session_token = props.checkoutSessionToken;
     if (props.displayCurrency) payload.display_currency = props.displayCurrency;
+    const country = props.suggestedCountryCode
+        ? String(props.suggestedCountryCode).toUpperCase().trim().slice(0, 2)
+        : '';
+    if (country.length === 2) {
+        payload.billing_country = country;
+    }
     if (Array.isArray(props.orderBumpIds) && props.orderBumpIds.length > 0) {
         payload.order_bump_ids = props.orderBumpIds
             .map((id) => (typeof id === 'number' ? id : parseInt(id, 10)))
@@ -1756,6 +1939,39 @@ async function beforeCajuPayWalletPrime() {
     startCajuPayPolling(cajupayPollingToken.value);
 }
 
+/**
+ * Rede de segurança: Google/Apple Pay concluem no botão nativo (onStatus completed).
+ * Garante pedido + polling se o pagamento passou antes do confirm-order ou o webhook atrasar.
+ */
+async function onCajuPayWalletPaymentCompleted() {
+    if (!isCajuPayWalletSdk.value) {
+        return;
+    }
+    cajupayError.value = '';
+    try {
+        if (!cajupayOrderMaterialized.value) {
+            if (!validateCajuPayCustomerFields()) {
+                cajupayError.value =
+                    'Pagamento aprovado na operadora. Preencha e-mail e os dados acima para concluir o pedido.';
+                return;
+            }
+            await postCajuPayConfirmOrder();
+            cajupayOrderMaterialized.value = true;
+        }
+        if (!cajupayPolling.value && cajupayPollingToken.value) {
+            startCajuPayPolling(cajupayPollingToken.value);
+        }
+        await pollCajuPayOrderStatus();
+    } catch (e) {
+        const msg = e?.response?.data?.message || e?.message || '';
+        if (msg) {
+            cajupayError.value = msg;
+        } else if (!cajupayPolling.value && cajupayPollingToken.value) {
+            startCajuPayPolling(cajupayPollingToken.value);
+        }
+    }
+}
+
 async function submitCajuPaySdkFlow(paymentMethod) {
     cajupayError.value = '';
     cardFormError.value = '';
@@ -2352,12 +2568,12 @@ function submit() {
                                 </div>
                             </template>
                             <button
-                                v-for="c in countryCodes"
-                                :key="c.code"
+                                v-for="c in sortedCountryCodes"
+                                :key="`${c.country}-${c.code}`"
                                 type="button"
                                 role="option"
                                 class="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition hover:bg-gray-50"
-                                :class="form.country_code === c.code ? 'bg-gray-50 font-medium text-gray-900' : 'text-gray-700'"
+                                :class="phoneCountryIso === c.country ? 'bg-gray-50 font-medium text-gray-900' : 'text-gray-700'"
                                 @click="selectPhoneCountry(c)"
                             >
                                 <img
@@ -2369,7 +2585,7 @@ function submit() {
                                 />
                                 <span class="min-w-0 flex-1">{{ c.label }}</span>
                                 <span class="shrink-0 text-gray-500">+{{ c.code }}</span>
-                                <Check v-if="form.country_code === c.code" class="h-4 w-4 shrink-0 text-gray-500" />
+                                <Check v-if="phoneCountryIso === c.country" class="h-4 w-4 shrink-0 text-gray-500" />
                             </button>
                             </CheckoutDropdown>
                         </div>
@@ -2433,12 +2649,12 @@ function submit() {
                                         </div>
                                     </template>
                                     <button
-                                        v-for="c in countryCodes"
-                                        :key="c.code"
+                                        v-for="c in sortedCountryCodes"
+                                        :key="`${c.country}-${c.code}`"
                                         type="button"
                                         role="option"
                                         class="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition hover:bg-gray-50"
-                                        :class="form.country_code === c.code ? 'bg-gray-50 font-medium text-gray-900' : 'text-gray-700'"
+                                        :class="phoneCountryIso === c.country ? 'bg-gray-50 font-medium text-gray-900' : 'text-gray-700'"
                                         @click="selectPhoneCountry(c)"
                                     >
                                         <img
@@ -2450,7 +2666,7 @@ function submit() {
                                         />
                                         <span class="min-w-0 flex-1">{{ c.label }}</span>
                                         <span class="shrink-0 text-gray-500">+{{ c.code }}</span>
-                                        <Check v-if="form.country_code === c.code" class="h-4 w-4 shrink-0 text-gray-500" />
+                                        <Check v-if="phoneCountryIso === c.country" class="h-4 w-4 shrink-0 text-gray-500" />
                                     </button>
                                 </CheckoutDropdown>
                             </div>
@@ -2602,7 +2818,9 @@ function submit() {
                         :session-token="cajupaySessionToken"
                         :initial-payer="{ name: form.name, email: form.email, document: (form.cpf || '').replace(/\D/g, '') }"
                         :before-wallet-prime="beforeCajuPayWalletPrime"
+                        :payer-ready-for-prime="cajupayPayerReadyForPrime"
                         container-id="cajupay-method"
+                        @wallet-payment-completed="onCajuPayWalletPaymentCompleted"
                     />
                     <div
                         v-if="!cajupaySessionToken && (cajupaySessionLoading || cajupayMissingFieldsHint)"

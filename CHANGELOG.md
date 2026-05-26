@@ -26,9 +26,13 @@
   - **InitiateCheckout** e **Purchase** no checkout com `event_id` consistente para melhor atribuição na Meta.
 - **CajuPay**: persistência de `payment_id` nos metadados do pedido via webhook, facilitando reembolsos e rastreio.
 - **Checkout internacional**: preços personalizados por moeda estrangeira no produto; na cobrança o valor é convertido para BRL no gateway quando necessário, mas o painel mantém o registo e a visualização na **moeda em que o cliente pagou**.
+- **Checkout — telefone**: bandeira e DDI (`+55`, `+1`, etc.) pré-selecionados pela **localização (geo)**; o país detectado aparece **primeiro** na lista do seletor. Se o cliente escolher outro país manualmente, a escolha é respeitada (como no seletor de idioma/moeda).
 
 ### Correções
 
+- **Utmify / vendas em moeda estrangeira**: valores enviados à Utmify passam a usar o **liquidação em BRL** (`settlement_amount_cents` do webhook CajuPay), e não o valor em USD/EUR da cobrança — evita registrar R$ 4,86 quando o recebimento real foi ~R$ 27.
+- **CajuPay / Google Pay**: corrigido pagamento aprovado na CajuPay sem concluir o pedido no Getfy — o SDK não faz mais priming automático antes do `confirm-order`, a wallet só é exibida com dados do cliente válidos e o evento `completed` do SDK dispara materialização do pedido + polling.
+- **CajuPay / moeda no Brasil**: cobrança em **BRL** quando o comprador está no BR e não escolheu moeda estrangeira manualmente (evita enviar USD à API com valor em reais).
 - **Reembolsos (Vendas)**: corrigido erro ao reembolsar pedidos **sem `user_id`** (comprador resolvido pelo e-mail), falha quando o **`payment_id` CajuPay** não estava disponível e bloqueio após tentativa anterior falhada (nova tentativa permitida).
 - **Meta Pixel**: correções no fluxo de **Purchase** após pagamento (browser + CAPI) para reduzir eventos duplicados ou perdidos.
 
