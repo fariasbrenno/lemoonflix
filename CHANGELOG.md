@@ -22,6 +22,7 @@
   - **Configurações → Moedas**: botões **Importar moedas internacionais** e **Atualizar todas as taxas** (Frankfurter); comando `php artisan checkout:sync-currency-rates`.
   - Conversão de preços no backend via `rate_to_brl` genérico (sem hardcode só EUR/USD).
   - **Produto**: preços customizados por moeda para todas as moedas habilitadas do tenant (lista com scroll).
+  - **Conversão automática**: tenants com só BRL/USD/EUR passam a receber o **catálogo completo** no checkout, com `rate_to_brl` pré-preenchido via **cache Frankfurter** (24h) — sem precisar importar moedas em Configurações.
 
 ### Melhorias
 

@@ -2,7 +2,10 @@
 
 namespace Tests\Unit;
 
+use App\Services\ExchangeRateService;
 use App\Support\CheckoutCurrencyCatalog;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
@@ -65,5 +68,39 @@ class CheckoutCurrencyCatalogTest extends TestCase
     {
         $this->assertTrue(CheckoutCurrencyCatalog::isSupported('MXN'));
         $this->assertFalse(CheckoutCurrencyCatalog::isSupported('HRK'));
+    }
+
+    public function test_is_legacy_currency_list_detects_default_three(): void
+    {
+        $legacy = config('products.currencies');
+        $this->assertTrue(CheckoutCurrencyCatalog::isLegacyCurrencyList($legacy));
+        $this->assertFalse(CheckoutCurrencyCatalog::isLegacyCurrencyList([
+            ['code' => 'BRL', 'rate_to_brl' => 1],
+            ['code' => 'MXN', 'rate_to_brl' => 3.5],
+        ]));
+    }
+
+    public function test_currencies_for_checkout_expands_legacy_and_resolves_mxn_rate(): void
+    {
+        Cache::forget(ExchangeRateService::CACHE_KEY_RATES_FROM_BRL);
+        Http::fake([
+            'api.frankfurter.app/*' => Http::response([
+                'base' => 'BRL',
+                'rates' => ['MXN' => 3.45, 'USD' => 0.18, 'EUR' => 0.16, 'GBP' => 0.14],
+            ], 200),
+        ]);
+
+        $rows = CheckoutCurrencyCatalog::currenciesForCheckout((array) config('products.currencies'));
+        $codes = array_column($rows, 'code');
+
+        $this->assertContains('MXN', $codes);
+        $this->assertGreaterThan(3, count($rows));
+
+        $mxn = collect($rows)->firstWhere('code', 'MXN');
+        $this->assertNotNull($mxn);
+        $this->assertGreaterThan(0, $mxn['rate_to_brl']);
+
+        $converted = CheckoutCurrencyCatalog::foreignFromBrlAmount(100.0, 'MXN', $rows);
+        $this->assertGreaterThan(100, $converted);
     }
 }

@@ -463,6 +463,6 @@ class PaymentsController extends Controller
             ? (is_string($raw) ? json_decode($raw, true) : $raw)
             : config('products.currencies');
 
-        return CheckoutCurrencyCatalog::mergeTenantCurrencies(is_array($list) ? $list : []);
+        return CheckoutCurrencyCatalog::currenciesForCheckout(is_array($list) ? $list : []);
     }
 }

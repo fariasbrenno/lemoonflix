@@ -43,6 +43,7 @@ class SyncCheckoutCurrencyRatesCommand extends Command
             }
         }
 
+        $exchangeRateService->forgetCachedRates();
         $this->info('Taxas de moeda sincronizadas.');
 
         return self::SUCCESS;
@@ -66,7 +67,7 @@ class SyncCheckoutCurrencyRatesCommand extends Command
             $rows = $exchangeRateService->applyRatesToCurrencyRows($merged);
         }
 
-        Setting::set('currencies', json_encode($rows), $tenantId);
+        Setting::set('currencies', $rows, $tenantId);
         $label = $tenantId === null ? 'global' : "tenant {$tenantId}";
         $this->line("  {$label}: ".count($rows).' moedas');
     }

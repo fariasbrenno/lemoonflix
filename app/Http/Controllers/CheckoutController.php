@@ -243,7 +243,7 @@ class CheckoutController extends Controller
         $currencies = $currenciesRaw
             ? (is_string($currenciesRaw) ? json_decode($currenciesRaw, true) : $currenciesRaw)
             : config('products.currencies');
-        $payload['currencies'] = CheckoutCurrencyCatalog::mergeTenantCurrencies(
+        $payload['currencies'] = CheckoutCurrencyCatalog::currenciesForCheckout(
             is_array($currencies) ? $currencies : (array) config('products.currencies')
         );
 
@@ -2690,7 +2690,7 @@ class CheckoutController extends Controller
 
         $list = is_array($currencies) ? $currencies : (array) config('products.currencies');
 
-        return CheckoutCurrencyCatalog::mergeTenantCurrencies($list);
+        return CheckoutCurrencyCatalog::currenciesForCheckout($list);
     }
 
     /**

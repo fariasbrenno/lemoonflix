@@ -153,7 +153,10 @@ export function useCheckoutLocale(options = {}) {
             }
         }
         const obj = currentCurrencyObj.value;
-        const rate = Number(obj.rate_to_brl) || 1;
+        const rate = Number(obj.rate_to_brl);
+        if (!rate || rate <= 0 || Number.isNaN(rate)) {
+            return Math.round(n * 100) / 100;
+        }
         return Math.round(n * rate * 100) / 100;
     }
 

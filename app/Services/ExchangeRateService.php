@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Support\CheckoutCurrencyCatalog;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -11,6 +12,10 @@ class ExchangeRateService
     private const FRANKFURTER_URL = 'https://api.frankfurter.app/latest';
 
     private const CHUNK_SIZE = 30;
+
+    public const CACHE_KEY_RATES_FROM_BRL = 'checkout.frankfurter_rates_from_brl';
+
+    public const CACHE_TTL_HOURS = 24;
 
     /**
      * Taxas BRL → moeda estrangeira (rate_to_brl: unidades da moeda por 1 BRL).
@@ -150,5 +155,39 @@ class ExchangeRateService
         ));
 
         return $this->applyRatesToCurrencyRows($rows, $codes);
+    }
+
+    /**
+     * Taxas BRL → moeda (rate_to_brl), em cache 24h para vitrine/conversão sem configurar manualmente.
+     *
+     * @return array<string, float>
+     */
+    public function getCachedRatesMap(): array
+    {
+        return Cache::remember(
+            self::CACHE_KEY_RATES_FROM_BRL,
+            now()->addHours(self::CACHE_TTL_HOURS),
+            function (): array {
+                $codes = array_values(array_filter(
+                    CheckoutCurrencyCatalog::supportedCodes(),
+                    fn (string $c): bool => $c !== 'BRL'
+                ));
+                $fetched = $this->fetchRatesFromBrl($codes);
+                $defaults = config('products.rates', []);
+                if (! isset($fetched['USD']) || $fetched['USD'] <= 0) {
+                    $fetched['USD'] = (float) ($defaults['brl_usd'] ?? 0.18);
+                }
+                if (! isset($fetched['EUR']) || $fetched['EUR'] <= 0) {
+                    $fetched['EUR'] = (float) ($defaults['brl_eur'] ?? 0.16);
+                }
+
+                return $fetched;
+            }
+        );
+    }
+
+    public function forgetCachedRates(): void
+    {
+        Cache::forget(self::CACHE_KEY_RATES_FROM_BRL);
     }
 }

@@ -32,7 +32,7 @@ class SettingsController extends Controller
         if (! is_array($currencies)) {
             $currencies = config('products.currencies');
         }
-        $currencies = CheckoutCurrencyCatalog::mergeTenantCurrencies($currencies);
+        $currencies = CheckoutCurrencyCatalog::currenciesForCheckout($currencies);
 
         $gitAvailable = is_dir(base_path('.git'));
         $cloudMode = (bool) config('getfy.cloud_mode', false);
@@ -207,6 +207,7 @@ class SettingsController extends Controller
     public function importCurrencyCatalog(ExchangeRateService $exchangeRateService): JsonResponse
     {
         $tenantId = auth()->user()->tenant_id;
+        $exchangeRateService->forgetCachedRates();
         $rows = $exchangeRateService->buildFullCatalogWithRates();
         Setting::set('currencies', $rows, $tenantId);
 
@@ -227,6 +228,7 @@ class SettingsController extends Controller
         if (! is_array($existing)) {
             $existing = config('products.currencies');
         }
+        $exchangeRateService->forgetCachedRates();
         $merged = CheckoutCurrencyCatalog::mergeTenantCurrencies($existing);
         $rows = $exchangeRateService->applyRatesToCurrencyRows($merged);
         Setting::set('currencies', $rows, $tenantId);

@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use App\Services\ExchangeRateService;
+
 class CheckoutCurrencyCatalog
 {
     /** @var array<string, array{symbol: string, label: string, zero_decimal: bool}>|null */
@@ -132,8 +134,13 @@ class CheckoutCurrencyCatalog
             : round($converted, 2);
     }
 
-    private static function fallbackRateToBrl(string $code): float
+    public static function fallbackRateToBrl(string $code): float
     {
+        $code = strtoupper(trim($code));
+        if ($code === 'BRL') {
+            return 1.0;
+        }
+
         $defaults = config('products.rates', []);
         if ($code === 'USD') {
             return (float) ($defaults['brl_usd'] ?? 0.18);
@@ -142,7 +149,117 @@ class CheckoutCurrencyCatalog
             return (float) ($defaults['brl_eur'] ?? 0.16);
         }
 
-        return 0.0;
+        try {
+            $cached = app(ExchangeRateService::class)->getCachedRatesMap();
+
+            return isset($cached[$code]) && $cached[$code] > 0 ? (float) $cached[$code] : 0.0;
+        } catch (\Throwable) {
+            return 0.0;
+        }
+    }
+
+    /**
+     * Lista do tenant ainda só com BRL/USD/EUR (install antigo ou sem importar catálogo).
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    public static function isLegacyCurrencyList(array $rows): bool
+    {
+        $codes = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $code = isset($row['code']) ? strtoupper(trim((string) $row['code'])) : '';
+            if ($code !== '') {
+                $codes[] = $code;
+            }
+        }
+        $codes = array_values(array_unique($codes));
+        sort($codes);
+
+        return $codes === [] || (count($codes) <= 3 && array_diff($codes, ['BRL', 'EUR', 'USD']) === []);
+    }
+
+    /**
+     * Moedas para checkout: catálogo completo com taxas (cache Frankfurter) quando o tenant ainda não importou.
+     *
+     * @param  array<int, array<string, mixed>>  $tenantRows
+     * @return list<array{code: string, symbol: string, label: string, rate_to_brl: float}>
+     */
+    public static function currenciesForCheckout(array $tenantRows): array
+    {
+        $tenantRows = is_array($tenantRows) ? $tenantRows : [];
+
+        if ($tenantRows === [] || self::isLegacyCurrencyList($tenantRows)) {
+            $byCode = [];
+            foreach (self::defaultTenantCurrencyRows() as $row) {
+                $byCode[$row['code']] = $row;
+            }
+            foreach ($tenantRows as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $code = isset($row['code']) ? strtoupper(trim((string) $row['code'])) : '';
+                if ($code === '' || ! isset($byCode[$code])) {
+                    continue;
+                }
+                if ((float) ($row['rate_to_brl'] ?? 0) > 0) {
+                    $byCode[$code]['rate_to_brl'] = (float) $row['rate_to_brl'];
+                }
+                if (! empty($row['symbol'])) {
+                    $byCode[$code]['symbol'] = (string) $row['symbol'];
+                }
+                if (! empty($row['label'])) {
+                    $byCode[$code]['label'] = (string) $row['label'];
+                }
+            }
+            $merged = array_values($byCode);
+        } else {
+            $merged = self::mergeTenantCurrencies($tenantRows);
+        }
+
+        return self::applyResolvedRates($merged);
+    }
+
+    /**
+     * Preenche rate_to_brl ausente com cache/API e fallbacks USD/EUR.
+     *
+     * @param  list<array{code: string, symbol?: string, label?: string, rate_to_brl?: float}>  $rows
+     * @return list<array{code: string, symbol: string, label: string, rate_to_brl: float}>
+     */
+    public static function applyResolvedRates(array $rows): array
+    {
+        $cached = [];
+        try {
+            $cached = app(ExchangeRateService::class)->getCachedRatesMap();
+        } catch (\Throwable) {
+            $cached = [];
+        }
+
+        $resolved = [];
+        foreach ($rows as $row) {
+            if (! is_array($row) || empty($row['code'])) {
+                continue;
+            }
+            $code = strtoupper(trim((string) $row['code']));
+            $meta = self::metadataFor($code);
+            $rate = $code === 'BRL' ? 1.0 : max(0.0, (float) ($row['rate_to_brl'] ?? 0));
+            if ($rate <= 0 && isset($cached[$code]) && $cached[$code] > 0) {
+                $rate = (float) $cached[$code];
+            }
+            if ($rate <= 0) {
+                $rate = self::fallbackRateToBrl($code);
+            }
+            $resolved[] = [
+                'code' => $code,
+                'symbol' => (string) ($row['symbol'] ?? $meta['symbol']),
+                'label' => (string) ($row['label'] ?? $meta['label']),
+                'rate_to_brl' => $rate > 0 ? $rate : ($code === 'BRL' ? 1.0 : 0.0),
+            ];
+        }
+
+        return self::mergeTenantCurrencies($resolved);
     }
 
     /**
