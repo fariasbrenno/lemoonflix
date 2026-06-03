@@ -457,7 +457,7 @@ const inputClass =
                         ]"
                         @click="activeTab = 'vendas'"
                     >
-                        Página de vendas
+                        Conteúdo
                     </button>
                     <button
                         type="button"
@@ -1045,11 +1045,11 @@ const inputClass =
                     </div>
                 </div>
 
-                <!-- Aba Página de vendas -->
+                <!-- Aba Conteúdo (banners, hero e textos do checkout) -->
                 <div v-show="activeTab === 'vendas'" class="space-y-4">
                     <div class="panel-card-lg p-4">
                         <p class="mb-4 text-sm text-zinc-600 dark:text-zinc-400">
-                            Monte sua página de vendas com banners em tamanhos fixos e blocos de texto. A miniatura abaixo de cada bloco mostra como ficará no checkout.
+                            Configure hero, banners laterais e blocos de texto acima do formulário. A miniatura abaixo de cada bloco mostra como ficará no checkout.
                         </p>
                         <CheckoutContentBlocksEditor
                             v-model="configForm.appearance.content_blocks"

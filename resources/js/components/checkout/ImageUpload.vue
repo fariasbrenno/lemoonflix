@@ -36,6 +36,7 @@ const previewRecommended = computed(() => {
 });
 
 const previewAspectClass = computed(() => formatMeta.value?.aspectClass ?? '');
+const useNaturalPreview = computed(() => props.aspectFormat === 'portrait');
 
 function getCsrfToken() {
     const match = document.cookie.match(/XSRF-TOKEN=([^;]+)/);
@@ -125,8 +126,15 @@ const inputId = computed(() => `img-upload-${Math.random().toString(36).slice(2)
             class="flex flex-col items-stretch gap-2 rounded-xl border-2 border-dashed border-zinc-200 bg-zinc-50/50 p-4 dark:border-zinc-600 dark:bg-zinc-800/50"
         >
             <div v-if="previewUrl" class="relative w-full max-w-md self-start">
+                <img
+                    v-if="useNaturalPreview"
+                    :src="previewUrl"
+                    alt="Preview"
+                    class="block h-auto w-full rounded-lg bg-zinc-200 object-contain dark:bg-zinc-700"
+                    @error="retryImageOnError"
+                />
                 <div
-                    v-if="previewAspectClass"
+                    v-else-if="previewAspectClass"
                     class="relative w-full overflow-hidden rounded-lg bg-zinc-200 dark:bg-zinc-700"
                     :class="previewAspectClass"
                 >

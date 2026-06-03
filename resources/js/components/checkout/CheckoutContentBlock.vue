@@ -15,6 +15,13 @@ const isText = computed(() => props.block?.type === 'text');
 
 const formatMeta = computed(() => getImageFormat(props.block?.format ?? 'wide'));
 
+/** Banners laterais: exibir imagem inteira (como antes), sem crop em caixa 2:3. */
+const isSidebarBanner = computed(() => {
+    const fmt = props.block?.format ?? '';
+    const place = props.dataPlacement ?? '';
+    return fmt === 'portrait' || place === 'sidebar' || place === 'side';
+});
+
 const textAlignClass = computed(() => {
     const align = props.block?.align ?? 'center';
     if (align === 'left') return 'text-left';
@@ -67,7 +74,21 @@ const showBody = computed(() => bodyText.value !== '');
         :data-checkout="`content-block-${dataPlacement}`"
         :data-block-id="block.id"
     >
-        <div class="relative w-full overflow-hidden bg-gray-100" :class="formatMeta.aspectClass">
+        <div
+            v-if="isSidebarBanner"
+            class="w-full overflow-hidden bg-gray-100"
+        >
+            <img
+                :src="block.url"
+                :alt="imageAlt"
+                class="block h-auto w-full object-contain"
+                :class="imageClass"
+                loading="lazy"
+                decoding="async"
+                @error="retryImageOnError"
+            />
+        </div>
+        <div v-else class="relative w-full overflow-hidden bg-gray-100" :class="formatMeta.aspectClass">
             <img
                 :src="block.url"
                 :alt="imageAlt"

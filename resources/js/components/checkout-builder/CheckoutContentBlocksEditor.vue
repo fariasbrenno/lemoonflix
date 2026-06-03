@@ -2,7 +2,6 @@
 import { computed, ref, watch } from 'vue';
 import ImageUpload from '@/components/checkout/ImageUpload.vue';
 import Button from '@/components/ui/Button.vue';
-import CheckoutContentBlock from '@/components/checkout/CheckoutContentBlock.vue';
 import {
     IMAGE_FORMATS,
     TEXT_ALIGNS,
@@ -243,14 +242,13 @@ const inputClass =
                     soft-validate-ratio
                     @update:model-value="patchBlock(index, { url: $event })"
                 />
-                <CheckoutContentBlock v-if="block.url" :block="block" data-placement="preview" />
             </div>
         </div>
 
         <div class="rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
             <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <div>
-                    <h4 class="text-sm font-semibold text-zinc-900 dark:text-white">Página de vendas</h4>
+                    <h4 class="text-sm font-semibold text-zinc-900 dark:text-white">Conteúdo principal</h4>
                     <p class="text-xs text-zinc-500 dark:text-zinc-400">Banners e textos acima do formulário — arraste pelo ícone ≡ para reordenar</p>
                 </div>
                 <div class="flex flex-wrap gap-2">
@@ -266,7 +264,7 @@ const inputClass =
                 </div>
             </div>
             <div v-if="!salesBlocks.length" class="rounded-lg border border-dashed border-zinc-200 px-3 py-6 text-center text-xs text-zinc-500 dark:border-zinc-600">
-                Adicione banners ou textos para montar sua página de vendas.
+                Adicione banners ou textos acima do formulário de pagamento.
             </div>
             <div
                 v-for="{ block, index } in salesBlocks"
@@ -343,8 +341,6 @@ const inputClass =
                         <label class="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">Link (opcional)</label>
                         <input :value="block.link" type="url" :class="inputClass" placeholder="https://" @input="patchBlock(index, { link: $event.target.value })" />
                     </div>
-                    <p v-if="block.url" class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Pré-visualização</p>
-                    <CheckoutContentBlock v-if="block.url" :block="block" data-placement="preview" />
                 </template>
             </div>
         </div>
@@ -353,7 +349,7 @@ const inputClass =
             <div class="mb-3 flex items-center justify-between gap-2">
                 <div>
                     <h4 class="text-sm font-semibold text-zinc-900 dark:text-white">Banners laterais</h4>
-                    <p class="text-xs text-zinc-500 dark:text-zinc-400">Proporção fixa 2:3 — ideal 400×600 px (desktop)</p>
+                    <p class="text-xs text-zinc-500 dark:text-zinc-400">Ideal 400×600 px (2:3) — a imagem aparece inteira na lateral, sem corte</p>
                 </div>
                 <Button type="button" variant="secondary" size="sm" @click="addImageBlock('portrait', 'sidebar')">
                     + Lateral
@@ -397,7 +393,6 @@ const inputClass =
                     soft-validate-ratio
                     @update:model-value="patchBlock(index, { url: $event })"
                 />
-                <CheckoutContentBlock v-if="block.url" :block="block" data-placement="preview" />
             </div>
         </div>
     </div>
