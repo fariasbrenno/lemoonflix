@@ -34,6 +34,7 @@ use App\Support\CheckoutConfigNormalizer;
 use App\Support\CheckoutCurrencyCatalog;
 use App\Support\CheckoutCurrencyMode;
 use App\Support\CheckoutCustomPriceByCurrency;
+use App\Support\CheckoutPaymentMethodsBuilder;
 use App\Support\CheckoutPaymentMethodOrder;
 use App\Support\CheckoutTranslations;
 use App\Support\FakeConsumerData;
@@ -258,7 +259,7 @@ class CheckoutController extends Controller
             $paymentOrderCountry = 'US';
         }
         $payload['available_payment_methods'] = CheckoutPaymentMethodOrder::applyForCountry(
-            $this->buildAvailablePaymentMethods($product, $resolved['plan'] ?? null, $config),
+            CheckoutPaymentMethodsBuilder::build($product->tenant_id, $config['payment_gateways'] ?? [], $resolved['plan'] ?? null),
             $paymentOrderCountry
         );
         $payload['product']['custom_display_prices_by_currency'] = $this->customDisplayPricesMap($product);
@@ -2554,89 +2555,17 @@ class CheckoutController extends Controller
     }
 
     /**
-     * Métodos de pagamento disponíveis para o produto (PIX, Cartão, Boleto, PIX automático para assinatura).
-     *
-     * @param  array<string, mixed>|null  $effectiveConfig  Config efetiva (product + plan/offer) para payment_gateways.
-     * @return array<int, array{id: string, label: string, gateway_name?: string, gateway_slug?: string}>
+     * @deprecated Use CheckoutPaymentMethodsBuilder::build()
      */
     private function buildAvailablePaymentMethods(Product $product, ?SubscriptionPlan $plan = null, ?array $effectiveConfig = null): array
     {
-        $tenantId = $product->tenant_id;
         $config = $effectiveConfig ?? $product->checkout_config ?? [];
-        $pg = $config['payment_gateways'] ?? [];
-        $orderRaw = Setting::get('gateway_order', null, $tenantId);
-        if (is_string($orderRaw)) {
-            $orderRaw = json_decode($orderRaw, true);
-        }
-        $defaultOrder = config('gateways.default_order', [
-            'pix' => [],
-            'card' => [],
-            'boleto' => [],
-            'pix_auto' => [],
-            'apple_pay' => [],
-            'google_pay' => [],
-        ]);
-        $order = is_array($orderRaw) ? $orderRaw : $defaultOrder;
-        $order = [
-            'pix' => $order['pix'] ?? $defaultOrder['pix'] ?? [],
-            'card' => $order['card'] ?? $defaultOrder['card'] ?? [],
-            'boleto' => $order['boleto'] ?? $defaultOrder['boleto'] ?? [],
-            'pix_auto' => $order['pix_auto'] ?? $defaultOrder['pix_auto'] ?? [],
-            'apple_pay' => $order['apple_pay'] ?? $defaultOrder['apple_pay'] ?? [],
-            'google_pay' => $order['google_pay'] ?? $defaultOrder['google_pay'] ?? [],
-        ];
 
-        $credentialBySlug = GatewayCredential::forTenant($tenantId)
-            ->where('is_connected', true)
-            ->get()
-            ->keyBy('gateway_slug');
-
-        $methods = [];
-        $methodConfig = [
-            'pix' => ['id' => 'pix', 'label' => 'PIX'],
-            'card' => ['id' => 'card', 'label' => 'Cartão'],
-            'boleto' => ['id' => 'boleto', 'label' => 'Boleto'],
-            'pix_auto' => ['id' => 'pix_auto', 'label' => 'PIX automático'],
-            'apple_pay' => ['id' => 'apple_pay', 'label' => 'Apple Pay'],
-            'google_pay' => ['id' => 'google_pay', 'label' => 'Google Pay'],
-        ];
-
-        foreach ($methodConfig as $methodKey => $meta) {
-            if ($methodKey === 'pix_auto' && $plan === null) {
-                continue;
-            }
-            $productSlug = isset($pg[$methodKey]) ? trim((string) $pg[$methodKey]) : null;
-            if ($productSlug === null || $productSlug === '') {
-                continue;
-            }
-            if ($productSlug === '__default__') {
-                $slugsToCheck = is_array($order[$methodKey] ?? null) ? $order[$methodKey] : [];
-            } else {
-                $redundancy = $pg[$methodKey . '_redundancy'] ?? [];
-                $redundancy = is_array($redundancy) ? $redundancy : [];
-                $slugsToCheck = array_merge([$productSlug], $redundancy);
-            }
-
-            foreach ($slugsToCheck as $slug) {
-                $cred = $credentialBySlug->get($slug);
-                if (! $cred) {
-                    continue;
-                }
-                $gateway = GatewayRegistry::get($slug);
-                if (! $gateway || ! in_array($methodKey, $gateway['methods'] ?? [], true)) {
-                    continue;
-                }
-                $methods[] = [
-                    'id' => $meta['id'],
-                    'label' => $meta['label'],
-                    'gateway_slug' => $slug,
-                    'gateway_name' => $gateway['name'] ?? $slug,
-                ];
-                break;
-            }
-        }
-
-        return $methods;
+        return CheckoutPaymentMethodsBuilder::build(
+            $product->tenant_id,
+            $config['payment_gateways'] ?? [],
+            $plan
+        );
     }
 
     /**

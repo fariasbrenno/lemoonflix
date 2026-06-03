@@ -3,6 +3,10 @@ import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { Head, useForm, usePage, router } from '@inertiajs/vue3';
 import { QrCode, Barcode, CreditCard, Receipt, ShieldCheck, AlertCircle, ArrowLeft } from 'lucide-vue-next';
 import ConversionPixels from '@/components/checkout/ConversionPixels.vue';
+import CajuPaySdkMount from '@/components/checkout/CajuPaySdkMount.vue';
+import { getMethodCardComponent } from '@/components/checkout/gateways/registry.js';
+import { useApiCajuPayCheckout } from '@/composables/useApiCajuPayCheckout.js';
+import { isIosDevice } from '@/utils/isIosDevice.js';
 import {
     API_CHECKOUT_PAGARME_TOKENIZE_FORM_ID,
     PAGARME_TOKENIZE_FORM_ACTION,
@@ -23,19 +27,23 @@ const props = defineProps({
     customer_email: { type: String, default: null },
     customer_name: { type: String, default: null },
     customer_cpf: { type: String, default: null },
+    customer_phone: { type: String, default: null },
     amount: { type: Number, required: true },
     currency: { type: String, default: 'BRL' },
     currencies: { type: Array, default: () => [] },
     product_name: { type: String, default: null },
     product_image_url: { type: String, default: null },
     available_methods: { type: Array, default: () => [] },
+    checkout_payment_methods: { type: Array, default: () => [] },
     return_url: { type: String, default: null },
     card_gateway_slug: { type: String, default: null },
+    card_payee_code: { type: String, default: '' },
+    card_efi_sandbox: { type: Boolean, default: false },
     card_stripe_publishable_key: { type: String, default: '' },
     card_stripe_sandbox: { type: Boolean, default: false },
     card_stripe_link_enabled: { type: Boolean, default: true },
-    card_efi_payee_code: { type: String, default: '' },
-    card_efi_sandbox: { type: Boolean, default: false },
+    card_mercadopago_public_key: { type: String, default: '' },
+    card_mercadopago_sandbox: { type: Boolean, default: false },
     card_pagarme_public_key: { type: String, default: '' },
     /** Base da API v5 para tokenização (igual config/services.pagarme.base_url). */
     card_pagarme_api_base_url: { type: String, default: 'https://api.pagar.me/core/v5' },
@@ -138,9 +146,69 @@ function onError(errors) {
 }
 
 const canPayWithStripe = computed(() => props.card_gateway_slug === 'stripe' && (props.card_stripe_publishable_key || '').trim() !== '');
-const canPayWithEfi = computed(() => props.card_gateway_slug === 'efi' && (props.card_efi_payee_code || '').trim() !== '');
+const canPayWithEfi = computed(() => props.card_gateway_slug === 'efi' && (props.card_payee_code || '').trim() !== '');
 const canPayWithPagarme = computed(() => props.card_gateway_slug === 'pagarme' && (props.card_pagarme_public_key || '').trim() !== '');
-const canPayWithCard = computed(() => props.available_methods?.includes('card') && (canPayWithStripe.value || canPayWithEfi.value || canPayWithPagarme.value));
+const canPayWithMercadopago = computed(() => props.card_gateway_slug === 'mercadopago' && (props.card_mercadopago_public_key || '').trim() !== '');
+
+const visiblePaymentMethods = computed(() => {
+    const list = Array.isArray(props.checkout_payment_methods) && props.checkout_payment_methods.length > 0
+        ? props.checkout_payment_methods
+        : (props.available_methods || []).map((id) => ({ id, label: id, gateway_slug: props.card_gateway_slug }));
+    return list.filter((m) => {
+        if (m.id === 'apple_pay' && !isIosDevice()) return false;
+        if (m.id === 'google_pay' && isIosDevice()) return false;
+        return true;
+    });
+});
+
+const currentMethodEntry = computed(() =>
+    visiblePaymentMethods.value.find((m) => m.id === selectedMethod.value) ?? null
+);
+
+const isCajuPaySdkMethod = computed(() => {
+    const slug = (currentMethodEntry.value?.gateway_slug || '').toLowerCase();
+    return slug === 'cajupay' && ['card', 'apple_pay', 'google_pay'].includes(selectedMethod.value);
+});
+
+const canPayWithTokenCard = computed(() =>
+    selectedMethod.value === 'card'
+    && !isCajuPaySdkMethod.value
+    && (canPayWithStripe.value || canPayWithEfi.value || canPayWithPagarme.value)
+);
+
+const canPayWithCajuPaySdk = computed(() => isCajuPaySdkMethod.value);
+
+const canPayWithCard = computed(() =>
+    props.available_methods?.includes('card')
+    && (canPayWithCajuPaySdk.value || canPayWithTokenCard.value || canPayWithMercadopago.value)
+);
+
+const cajupay = useApiCajuPayCheckout({
+    sessionToken: computed(() => props.session_token),
+    paymentMethod: computed(() => selectedMethod.value || 'card'),
+    displayCurrency,
+    customerEmail: computed(() => props.customer_email),
+    customerName: computed(() => props.customer_name),
+    customerCpf: computed(() => props.customer_cpf),
+    customerPhone: computed(() => props.customer_phone),
+    onError,
+});
+
+const {
+    cajupayMountRef,
+    cajupaySessionToken,
+    cajupayError,
+    cajupaySessionLoading,
+    cardSubmitting: cajupaySubmitting,
+    isWalletMethod,
+    cajupayPayerReadyForPrime,
+    cajupayInitialPayer,
+    resetCajuPaySession,
+    scheduleEnsureCajuPaySession,
+    submitCajuPaySdkFlow,
+    beforeCajuPayWalletPrime,
+    onCajuPayWalletPaymentCompleted,
+} = cajupay;
 
 /** Método selecionado para exibir o bloco de ação (pix, boleto, card ou null). */
 const selectedMethod = ref(null);
@@ -215,18 +283,43 @@ watch(showCardForm, (visible) => {
 });
 
 function selectMethod(method) {
-    if (method === 'card') {
-        selectedMethod.value = 'card';
-        showCardForm.value = canPayWithCard.value;
+    selectedMethod.value = method;
+    const entry = visiblePaymentMethods.value.find((m) => m.id === method);
+    const isCajupay = (entry?.gateway_slug || '').toLowerCase() === 'cajupay'
+        && ['card', 'apple_pay', 'google_pay'].includes(method);
+    showCardForm.value = method === 'card' && !isCajupay && (canPayWithStripe.value || canPayWithEfi.value || canPayWithPagarme.value || canPayWithMercadopago.value);
+    if (isCajupay) {
+        resetCajuPaySession();
+        scheduleEnsureCajuPaySession();
     } else {
-        showCardForm.value = false;
-        selectedMethod.value = method;
+        resetCajuPaySession();
+        destroyMercadopagoBrick();
+        if (method === 'card' && canPayWithMercadopago.value) {
+            nextTick(() => loadMercadopagoBrick().catch((e) => {
+                mercadopagoBrickError.value = e?.message || 'Falha ao carregar Mercado Pago.';
+            }));
+        }
     }
 }
 
 function clearSelectedMethod() {
     selectedMethod.value = null;
     showCardForm.value = false;
+    resetCajuPaySession();
+    destroyMercadopagoBrick();
+    destroyStripeCard();
+}
+
+function methodButtonLabel(method) {
+    const labels = {
+        pix: 'Pagar com PIX',
+        pix_auto: 'Pagar com PIX Automático',
+        boleto: 'Pagar com Boleto',
+        card: 'Pagar com Cartão',
+        apple_pay: 'Apple Pay',
+        google_pay: 'Google Pay',
+    };
+    return labels[method.id] || method.label || method.id;
 }
 
 function submitPixAuto() {
@@ -246,6 +339,95 @@ onMounted(() => {
     document.title = title;
 });
 onBeforeUnmount(() => destroyStripeCard());
+
+const mercadopagoBrickContainer = ref(null);
+const mercadopagoBrickController = ref(null);
+const mercadopagoBrickReady = ref(false);
+const mercadopagoBrickError = ref('');
+
+function destroyMercadopagoBrick() {
+    try {
+        mercadopagoBrickController.value?.unmount?.();
+    } catch (_) {}
+    mercadopagoBrickController.value = null;
+    mercadopagoBrickReady.value = false;
+    mercadopagoBrickError.value = '';
+}
+
+async function initMercadopagoBrick() {
+    const mp = new window.MercadoPago(props.card_mercadopago_public_key.trim(), { locale: 'pt-BR' });
+    const bricksBuilder = mp.bricks();
+    const amount = Math.max(0.01, Number(displayAmount.value) || 0);
+    const settings = {
+        initialization: {
+            amount,
+            payer: {
+                email: props.customer_email || undefined,
+                firstName: (props.customer_name || '').trim().split(/\s+/)[0] || undefined,
+            },
+        },
+        callbacks: {
+            onReady: () => {
+                mercadopagoBrickReady.value = true;
+            },
+            onSubmit: (param) => {
+                const formData = param?.formData ?? param;
+                if (!formData || typeof formData !== 'object') {
+                    error.value = 'Dados do cartão inválidos.';
+                    return Promise.reject();
+                }
+                return new Promise((resolve, reject) => {
+                    cardSubmitting.value = true;
+                    error.value = '';
+                    router.post('/api-checkout/pay', {
+                        session_token: props.session_token,
+                        payment_method: 'card',
+                        payment_token: JSON.stringify(formData),
+                    }, {
+                        preserveScroll: true,
+                        onError: (err) => {
+                            onError(err);
+                            reject();
+                        },
+                        onFinish: () => {
+                            cardSubmitting.value = false;
+                            resolve();
+                        },
+                    });
+                });
+            },
+            onError: (err) => {
+                mercadopagoBrickError.value = err?.message || 'Erro no formulário de pagamento.';
+            },
+        },
+    };
+    mercadopagoBrickController.value = await bricksBuilder.create('cardPayment', 'api_cardPaymentBrick_container', settings);
+}
+
+async function loadMercadopagoBrick() {
+    mercadopagoBrickError.value = '';
+    if (!props.card_mercadopago_public_key?.trim() || !mercadopagoBrickContainer.value) {
+        return;
+    }
+    destroyMercadopagoBrick();
+    if (typeof window !== 'undefined' && window.MercadoPago) {
+        await initMercadopagoBrick();
+        return;
+    }
+    await new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://sdk.mercadopago.com/js/v2';
+        script.async = true;
+        script.onload = () => initMercadopagoBrick().then(resolve).catch(reject);
+        script.onerror = () => reject(new Error('Falha ao carregar Mercado Pago.'));
+        document.head.appendChild(script);
+    });
+}
+
+onBeforeUnmount(() => {
+    destroyStripeCard();
+    destroyMercadopagoBrick();
+});
 
 async function submitCard(ev) {
     ev.preventDefault();
@@ -391,7 +573,7 @@ async function submitCard(ev) {
             }
             const EfiPay = (await import('payment-token-efi')).default;
             const env = props.card_efi_sandbox ? 'sandbox' : 'production';
-            const instance = EfiPay.CreditCard.setAccount((props.card_efi_payee_code || '').trim()).setEnvironment(env);
+            const instance = EfiPay.CreditCard.setAccount((props.card_payee_code || '').trim()).setEnvironment(env);
             instance.setCardNumber(numberDigits);
             const brand = await instance.verifyCardBrand();
             if (!brand || brand === 'unsupported') {
@@ -544,40 +726,14 @@ async function submitCard(ev) {
                         <!-- Opções de método (quando nenhum expandido) -->
                         <template v-if="selectedMethod === null">
                             <button
-                                v-if="available_methods.includes('pix')"
+                                v-for="m in visiblePaymentMethods"
+                                :key="m.id"
                                 type="button"
                                 class="flex w-full items-center justify-center gap-3 rounded-xl border-2 border-zinc-200 bg-white px-4 py-3.5 font-medium text-zinc-900 transition hover:border-emerald-500 hover:bg-emerald-50/50"
-                                @click="selectMethod('pix')"
+                                @click="selectMethod(m.id)"
                             >
-                                <QrCode class="h-5 w-5 shrink-0" />
-                                <span>Pagar com PIX</span>
-                            </button>
-                            <button
-                                v-if="available_methods.includes('pix_auto')"
-                                type="button"
-                                class="flex w-full items-center justify-center gap-3 rounded-xl border-2 border-zinc-200 bg-white px-4 py-3.5 font-medium text-zinc-900 transition hover:border-emerald-500 hover:bg-emerald-50/50"
-                                @click="selectMethod('pix_auto')"
-                            >
-                                <QrCode class="h-5 w-5 shrink-0" />
-                                <span>Pagar com PIX Automático</span>
-                            </button>
-                            <button
-                                v-if="available_methods.includes('boleto')"
-                                type="button"
-                                class="flex w-full items-center justify-center gap-3 rounded-xl border-2 border-zinc-200 bg-white px-4 py-3.5 font-medium text-zinc-900 transition hover:border-emerald-500 hover:bg-emerald-50/50"
-                                @click="selectMethod('boleto')"
-                            >
-                                <Barcode class="h-5 w-5 shrink-0" />
-                                <span>Pagar com Boleto</span>
-                            </button>
-                            <button
-                                v-if="available_methods.includes('card')"
-                                type="button"
-                                class="flex w-full items-center justify-center gap-3 rounded-xl border-2 border-zinc-200 bg-white px-4 py-3.5 font-medium text-zinc-900 transition hover:border-emerald-500 hover:bg-emerald-50/50"
-                                @click="selectMethod('card')"
-                            >
-                                <CreditCard class="h-5 w-5 shrink-0" />
-                                <span>Pagar com Cartão</span>
+                                <component :is="getMethodCardComponent(m)" class="h-5 w-5 shrink-0" />
+                                <span>{{ methodButtonLabel(m) }}</span>
                             </button>
                         </template>
 
@@ -670,9 +826,60 @@ async function submitCard(ev) {
                             </div>
                         </template>
 
-                        <!-- Cartão: formulário (mantido como já estava) -->
+                        <!-- CajuPay SDK: cartão embed, Apple Pay, Google Pay -->
+                        <template v-else-if="canPayWithCajuPaySdk">
+                            <div class="rounded-xl border-2 border-zinc-200 bg-zinc-50/30 p-4 space-y-4">
+                                <p v-if="cajupayError" class="text-sm text-red-600" role="alert">{{ cajupayError }}</p>
+                                <p v-if="cajupaySessionLoading" class="text-sm text-zinc-500">Carregando checkout seguro...</p>
+                                <div id="api-cajupay-method" class="min-h-[120px] rounded-lg border border-zinc-200 bg-white" />
+                                <CajuPaySdkMount
+                                    ref="cajupayMountRef"
+                                    :payment-method="selectedMethod"
+                                    :session-token="cajupaySessionToken"
+                                    :initial-payer="cajupayInitialPayer"
+                                    container-id="api-cajupay-method"
+                                    :before-wallet-prime="beforeCajuPayWalletPrime"
+                                    :payer-ready-for-prime="cajupayPayerReadyForPrime"
+                                    @wallet-payment-completed="onCajuPayWalletPaymentCompleted"
+                                />
+                                <div class="flex gap-2">
+                                    <button
+                                        type="button"
+                                        class="rounded-lg border border-zinc-300 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
+                                        @click="clearSelectedMethod"
+                                    >
+                                        Voltar
+                                    </button>
+                                    <button
+                                        v-if="!isWalletMethod"
+                                        type="button"
+                                        class="flex-1 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                                        :disabled="cajupaySubmitting || cajupaySessionLoading"
+                                        @click="submitCajuPaySdkFlow"
+                                    >
+                                        {{ cajupaySubmitting ? 'Processando...' : 'Pagar' }}
+                                    </button>
+                                </div>
+                                <p v-if="isWalletMethod" class="text-xs text-zinc-500">
+                                    Use o botão da carteira digital acima para concluir o pagamento.
+                                </p>
+                            </div>
+                        </template>
+
+                        <!-- Cartão: tokenização Stripe / Efí / Pagar.me / Mercado Pago -->
                         <template v-else-if="selectedMethod === 'card'">
-                            <form v-if="canPayWithCard" class="space-y-4 rounded-xl border border-zinc-200 bg-zinc-50/30 p-4" @submit.prevent="submitCard">
+                            <div v-if="canPayWithMercadopago" class="space-y-4 rounded-xl border border-zinc-200 bg-zinc-50/30 p-4">
+                                <p v-if="mercadopagoBrickError" class="text-sm text-red-600">{{ mercadopagoBrickError }}</p>
+                                <div ref="mercadopagoBrickContainer" id="api_cardPaymentBrick_container" class="min-h-[280px]" />
+                                <button
+                                    type="button"
+                                    class="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
+                                    @click="clearSelectedMethod"
+                                >
+                                    Voltar
+                                </button>
+                            </div>
+                            <form v-else-if="canPayWithTokenCard" class="space-y-4 rounded-xl border border-zinc-200 bg-zinc-50/30 p-4" @submit.prevent="submitCard">
                                 <div>
                                     <label for="card-holder-api" class="mb-2 block text-sm font-medium text-zinc-700">Nome no cartão</label>
                                     <input
@@ -831,7 +1038,7 @@ async function submitCard(ev) {
                                 </div>
                             </form>
                             <div v-else class="rounded-xl border-2 border-zinc-200 bg-zinc-50/30 p-4 space-y-4">
-                                <p class="text-sm text-zinc-600">Cartão está indisponível no momento para este checkout.</p>
+                                <p class="text-sm text-zinc-600">Este método de cartão não está disponível no momento.</p>
                                 <button
                                     type="button"
                                     class="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"

@@ -130,6 +130,9 @@ Route::get('/api-checkout/{token}', [\App\Http\Controllers\ApiCheckoutController
 Route::post('/api-checkout/pay', [\App\Http\Controllers\ApiCheckoutController::class, 'process'])
     ->name('api-checkout.process')
     ->middleware(['checkout.reuse-pix', 'throttle:checkout-process', 'throttle:checkout-pix', 'throttle:checkout-card', 'throttle:checkout-email', 'throttle:checkout-product-ip', 'checkout.abuse']);
+Route::post('/api-checkout/cajupay/session', [\App\Http\Controllers\ApiCheckoutController::class, 'cajupaySession'])->name('api-checkout.cajupay.session');
+Route::post('/api-checkout/cajupay/confirm-order', [\App\Http\Controllers\ApiCheckoutController::class, 'cajupayConfirmOrder'])->name('api-checkout.cajupay.confirm-order');
+Route::get('/api-checkout/order-status', [\App\Http\Controllers\ApiCheckoutController::class, 'orderStatus'])->name('api-checkout.order-status');
 Route::get('/api-checkout/card-confirm', [\App\Http\Controllers\ApiCheckoutController::class, 'cardConfirm'])->name('api-checkout.card-confirm');
 Route::get('/api-checkout/obrigado', [\App\Http\Controllers\ApiCheckoutController::class, 'thankYou'])->name('api-checkout.thank-you');
 

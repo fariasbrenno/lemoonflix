@@ -17,13 +17,16 @@ use App\Models\Setting;
 use App\Models\SubscriptionPlan;
 use App\Models\User;
 use App\Services\EfiPixRecorrenteService;
+use App\Services\CajuPayApiCheckoutService;
 use App\Services\CheckoutAbuseGuard;
 use App\Services\PaymentService;
 use App\Services\PushinPayPixRecorrenteService;
 use App\Services\StorageService;
 use App\Support\FakeConsumerData;
 use App\Support\MetaPurchaseTracking;
-use App\Support\PixCheckoutDisplay;
+use App\Support\CheckoutCardCredentialsPayload;
+use App\Support\CheckoutPaymentMethodsBuilder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -79,14 +82,17 @@ class ApiCheckoutController extends Controller
         $pg = is_array($pg) ? $pg : ApiApplication::defaultPaymentGateways();
 
         $productModel = null;
+        $subscriptionPlan = null;
         $productName = null;
         $productImageUrl = null;
         if ($session->product_id) {
             $productModel = Product::where('id', $session->product_id)->where('tenant_id', $app->tenant_id)->first();
         } elseif ($session->subscription_plan_id) {
-            $plan = SubscriptionPlan::with('product')->find($session->subscription_plan_id);
-            if ($plan && $plan->product && (int) $plan->product->tenant_id === (int) $app->tenant_id) {
-                $productModel = $plan->product;
+            $subscriptionPlan = SubscriptionPlan::with('product')->find($session->subscription_plan_id);
+            if ($subscriptionPlan && $subscriptionPlan->product && (int) $subscriptionPlan->product->tenant_id === (int) $app->tenant_id) {
+                $productModel = $subscriptionPlan->product;
+            } else {
+                $subscriptionPlan = null;
             }
         } elseif ($session->product_offer_id) {
             $offer = ProductOffer::with('product')->find($session->product_offer_id);
@@ -101,91 +107,14 @@ class ApiCheckoutController extends Controller
             }
         }
 
-        $paymentService = app(PaymentService::class);
         $tenantId = $app->tenant_id;
-        $pixEnabled = ! empty($pg['pix']);
-        $pixAutoEnabled = ! empty($pg['pix_auto']);
-        $cardEnabled = ! empty($pg['card']);
-        $boletoEnabled = ! empty($pg['boleto']);
-
-        $firstPixGateway = $pixEnabled ? $paymentService->getFirstAvailableGatewayForMethod($tenantId, 'pix', $productModel, $pg) : null;
-        $firstPixAutoGateway = $pixAutoEnabled ? $paymentService->getFirstAvailableGatewayForMethod($tenantId, 'pix_auto', $productModel, $pg) : null;
-        $firstCardGateway = $cardEnabled ? $paymentService->getFirstAvailableGatewayForMethod($tenantId, 'card', $productModel, $pg) : null;
-        $firstBoletoGateway = $boletoEnabled ? $paymentService->getFirstAvailableGatewayForMethod($tenantId, 'boleto', $productModel, $pg) : null;
-
-        $cardGatewaySlug = $cardEnabled ? (string) $pg['card'] : null;
-        $cardStripePublishableKey = '';
-        $cardStripeSandbox = false;
-        $cardStripeLinkEnabled = true;
-        $cardEfiPayeeCode = '';
-        $cardEfiSandbox = false;
-        $cardPagarmePublicKey = '';
-        $efiHasCertificate = false;
-
-        if ($cardGatewaySlug === 'stripe') {
-            $cred = GatewayCredential::forTenant($tenantId)->where('gateway_slug', 'stripe')->where('is_connected', true)->first();
-            if ($cred) {
-                $creds = $cred->getDecryptedCredentials();
-                $cardStripePublishableKey = (string) ($creds['publishable_key'] ?? '');
-                $cardStripeSandbox = ! empty($creds['sandbox']);
-                $cardStripeLinkEnabled = isset($creds['link_enabled']) ? (bool) $creds['link_enabled'] : true;
-            }
-            if (trim($cardStripePublishableKey) === '') {
-                $firstCardGateway = null;
-            }
-        } elseif ($cardGatewaySlug === 'efi') {
-            $cred = GatewayCredential::forTenant($tenantId)->where('gateway_slug', 'efi')->where('is_connected', true)->first();
-            if ($cred) {
-                $creds = $cred->getDecryptedCredentials();
-                $cardEfiPayeeCode = (string) ($creds['payee_code'] ?? '');
-                $cardEfiSandbox = ! empty($creds['sandbox']);
-                $certPath = (string) ($creds['certificate_path'] ?? '');
-                $efiHasCertificate = $certPath !== '' && is_file($certPath);
-            }
-            if (trim($cardEfiPayeeCode) === '' || ! $efiHasCertificate) {
-                $firstCardGateway = null;
-            }
-        } elseif ($cardGatewaySlug === 'pagarme') {
-            $cred = GatewayCredential::forTenant($tenantId)->where('gateway_slug', 'pagarme')->where('is_connected', true)->first();
-            if ($cred) {
-                $creds = $cred->getDecryptedCredentials();
-                $cardPagarmePublicKey = (string) ($creds['public_key'] ?? '');
-            }
-            if (trim($cardPagarmePublicKey) === '') {
-                $firstCardGateway = null;
-            }
-        }
-
-        if ($boletoEnabled && ($pg['boleto'] ?? null) === 'efi') {
-            if (! $efiHasCertificate) {
-                $cred = GatewayCredential::forTenant($tenantId)->where('gateway_slug', 'efi')->where('is_connected', true)->first();
-                if ($cred) {
-                    $creds = $cred->getDecryptedCredentials();
-                    $certPath = (string) ($creds['certificate_path'] ?? '');
-                    $efiHasCertificate = $certPath !== '' && is_file($certPath);
-                }
-            }
-            if (! $efiHasCertificate) {
-                $firstBoletoGateway = null;
-            }
-        }
-
-        $availableMethods = [];
-        if ($firstPixGateway !== null) {
-            $availableMethods[] = 'pix';
-        }
-        if ($firstPixAutoGateway !== null) {
-            $availableMethods[] = 'pix_auto';
-        }
-        if ($firstCardGateway !== null) {
-            $availableMethods[] = 'card';
-        }
-        if ($firstBoletoGateway !== null) {
-            $availableMethods[] = 'boleto';
-        }
+        $checkoutPaymentMethods = CheckoutPaymentMethodsBuilder::build($tenantId, $pg, $subscriptionPlan);
+        $availableMethods = CheckoutPaymentMethodsBuilder::methodIds($checkoutPaymentMethods);
         if (empty($availableMethods)) {
             abort(422, 'Nenhum método de pagamento configurado para esta aplicação.');
         }
+
+        $cardCredentials = CheckoutCardCredentialsPayload::forMethods($tenantId, $checkoutPaymentMethods);
 
         $customer = $session->customer ?? [];
         $appLogoUrl = $app->logo
@@ -213,15 +142,19 @@ class ApiCheckoutController extends Controller
             'product_name' => $productName,
             'product_image_url' => $productImageUrl,
             'available_methods' => $availableMethods,
+            'checkout_payment_methods' => $checkoutPaymentMethods,
             'return_url' => $session->return_url,
-            'card_gateway_slug' => $cardGatewaySlug,
-            'card_stripe_publishable_key' => $cardStripePublishableKey,
-            'card_stripe_sandbox' => $cardStripeSandbox,
-            'card_stripe_link_enabled' => $cardStripeLinkEnabled,
-            'card_efi_payee_code' => $cardEfiPayeeCode,
-            'card_efi_sandbox' => $cardEfiSandbox,
-            'card_pagarme_public_key' => $cardPagarmePublicKey,
-            'card_pagarme_api_base_url' => rtrim((string) config('services.pagarme.base_url', 'https://api.pagar.me/core/v5'), '/'),
+            'card_gateway_slug' => $cardCredentials['card_gateway_slug'],
+            'card_payee_code' => $cardCredentials['card_payee_code'],
+            'card_efi_sandbox' => $cardCredentials['card_efi_sandbox'],
+            'card_stripe_publishable_key' => $cardCredentials['card_stripe_publishable_key'],
+            'card_stripe_sandbox' => $cardCredentials['card_stripe_sandbox'],
+            'card_stripe_link_enabled' => $cardCredentials['card_stripe_link_enabled'],
+            'card_mercadopago_public_key' => $cardCredentials['card_mercadopago_public_key'],
+            'card_mercadopago_sandbox' => $cardCredentials['card_mercadopago_sandbox'],
+            'card_pagarme_public_key' => $cardCredentials['card_pagarme_public_key'],
+            'card_pagarme_api_base_url' => $cardCredentials['card_pagarme_api_base_url'],
+            'card_gateway_keys' => $cardCredentials['card_gateway_keys'],
             'checkout_security' => app(CheckoutAbuseGuard::class)->securityPropsForRequest($request, $productModel),
         ]);
     }
@@ -695,6 +628,61 @@ class ApiCheckoutController extends Controller
         }
 
         return redirect()->back()->with('error', 'Método não implementado.');
+    }
+
+    public function cajupaySession(Request $request, CajuPayApiCheckoutService $cajuPay): JsonResponse
+    {
+        $validated = $request->validate([
+            'session_token' => ['required', 'string', 'max:64'],
+            'payment_method' => ['required', 'string', 'in:card,apple_pay,google_pay'],
+            'display_currency' => ['nullable', 'string', 'max:8'],
+        ]);
+
+        try {
+            $session = $cajuPay->resolveSession($validated['session_token']);
+            $result = $cajuPay->createSdkSession(
+                $session,
+                $validated['payment_method'],
+                $validated['display_currency'] ?? null
+            );
+
+            return response()->json($result);
+        } catch (\Throwable $e) {
+            return response()->json(['message' => $e->getMessage() ?: 'Falha ao iniciar pagamento na CajuPay.'], 422);
+        }
+    }
+
+    public function cajupayConfirmOrder(Request $request, CajuPayApiCheckoutService $cajuPay): JsonResponse
+    {
+        $validated = $request->validate([
+            'session_token' => ['required', 'string', 'max:64'],
+            'polling_token' => ['required', 'string', 'size:32'],
+            'email' => ['nullable', 'email'],
+            'name' => ['nullable', 'string', 'max:255'],
+            'cpf' => ['nullable', 'string', 'max:14'],
+            'phone' => ['nullable', 'string', 'max:24'],
+        ]);
+
+        try {
+            $session = $cajuPay->resolveSession($validated['session_token']);
+            $customer = array_filter([
+                'email' => $validated['email'] ?? null,
+                'name' => $validated['name'] ?? null,
+                'cpf' => $validated['cpf'] ?? null,
+                'phone' => $validated['phone'] ?? null,
+            ], fn ($v) => $v !== null && $v !== '');
+
+            $result = $cajuPay->confirmOrder($request, $session, $validated['polling_token'], $customer);
+
+            return response()->json($result);
+        } catch (\Throwable $e) {
+            return response()->json(['message' => $e->getMessage() ?: 'Falha ao registrar o pedido.'], 422);
+        }
+    }
+
+    public function orderStatus(Request $request, CheckoutController $checkout): JsonResponse
+    {
+        return $checkout->orderStatus($request);
     }
 
     public function thankYou(Request $request): Response|RedirectResponse
