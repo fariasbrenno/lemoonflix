@@ -73,14 +73,14 @@ class CheckoutConfigNormalizer
             if (! is_string($url) || trim($url) === '') {
                 continue;
             }
-            $blocks[] = self::makeImageBlock(trim($url), 'hero', 'main');
+            $blocks[] = self::makeImageBlock(self::normalizeImageUrl(trim($url)), 'hero', 'main');
         }
 
         foreach ($appearance['side_banners'] ?? [] as $url) {
             if (! is_string($url) || trim($url) === '') {
                 continue;
             }
-            $blocks[] = self::makeImageBlock(trim($url), 'portrait', 'sidebar');
+            $blocks[] = self::makeImageBlock(self::normalizeImageUrl(trim($url)), 'portrait', 'sidebar');
         }
 
         return $blocks;
@@ -127,6 +127,8 @@ class CheckoutConfigNormalizer
             return null;
         }
 
+        $url = self::normalizeImageUrl($url);
+
         $format = (string) ($block['format'] ?? 'wide');
         if (! in_array($format, self::IMAGE_FORMATS, true)) {
             $format = 'wide';
@@ -172,7 +174,7 @@ class CheckoutConfigNormalizer
         return [
             'id' => self::blockId($block),
             'type' => 'image',
-            'url' => trim((string) ($block['url'] ?? '')),
+            'url' => self::normalizeImageUrl(trim((string) ($block['url'] ?? ''))),
             'format' => $format,
             'placement' => ($block['placement'] ?? '') === 'sidebar' ? 'sidebar' : 'main',
             'link' => trim((string) ($block['link'] ?? '')),
@@ -204,6 +206,30 @@ class CheckoutConfigNormalizer
         $id = trim((string) ($block['id'] ?? ''));
 
         return $id !== '' ? $id : (string) Str::uuid();
+    }
+
+    /**
+     * Converte URLs absolutas de /storage/... para caminho relativo (host-agnóstico).
+     */
+    private static function normalizeImageUrl(string $url): string
+    {
+        $url = trim($url);
+        if ($url === '') {
+            return '';
+        }
+
+        if (str_starts_with($url, '/storage/')) {
+            return $url;
+        }
+
+        if (str_starts_with($url, 'http://') || str_starts_with($url, 'https://')) {
+            $path = parse_url($url, PHP_URL_PATH);
+            if (is_string($path) && str_starts_with($path, '/storage/')) {
+                return $path;
+            }
+        }
+
+        return $url;
     }
 
     /**

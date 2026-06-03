@@ -1,5 +1,7 @@
 /** Formatos de bloco de imagem do checkout (proporções fixas). */
 
+import { normalizeCheckoutImageUrl } from '@/lib/checkoutImageUrl';
+
 export const IMAGE_FORMATS = {
     hero: {
         id: 'hero',
@@ -86,7 +88,7 @@ export function parseContentBlockForEditor(block) {
         return {
             id: generateBlockId(),
             type: 'image',
-            url: block.trim(),
+            url: normalizeCheckoutImageUrl(block.trim()),
             format: 'wide',
             placement: 'main',
             link: '',
@@ -113,7 +115,7 @@ export function parseContentBlockForEditor(block) {
     return {
         id: block.id || generateBlockId(),
         type: 'image',
-        url: String(block.url ?? ''),
+        url: normalizeCheckoutImageUrl(String(block.url ?? '')),
         format,
         placement: block.placement === 'sidebar' ? 'sidebar' : 'main',
         link: String(block.link ?? ''),
@@ -322,7 +324,7 @@ export function softValidateImageRatio(width, height, formatId) {
     const tolerance = 0.25;
     if (Math.abs(actual - expected) / expected > tolerance) {
         const fmt = getImageFormat(formatId);
-        return `Proporção diferente do ideal (${fmt.ratioLabel}). A imagem será cortada no checkout.`;
+        return `Proporção diferente do ideal (${fmt.ratioLabel}). A imagem será exibida inteira no checkout; para hero, 1200×400 px preenche melhor a faixa superior.`;
     }
     return null;
 }

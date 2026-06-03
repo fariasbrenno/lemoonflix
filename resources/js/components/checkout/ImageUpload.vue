@@ -3,6 +3,7 @@ import { ref, computed } from 'vue';
 import axios from 'axios';
 import { Upload, Loader2, X } from 'lucide-vue-next';
 import { retryImageOnError } from '@/lib/imageLoadRetry';
+import { normalizeCheckoutImageUrl } from '@/lib/checkoutImageUrl';
 import { getImageFormat, softValidateImageRatio } from '@/lib/checkoutContentFormats';
 
 const props = defineProps({
@@ -24,7 +25,10 @@ const uploading = ref(false);
 const error = ref('');
 const ratioWarning = ref('');
 
-const previewUrl = computed(() => props.modelValue || null);
+const previewUrl = computed(() => {
+    const normalized = normalizeCheckoutImageUrl(props.modelValue || '');
+    return normalized || null;
+});
 
 const formatMeta = computed(() => (props.aspectFormat ? getImageFormat(props.aspectFormat) : null));
 
@@ -36,7 +40,8 @@ const previewRecommended = computed(() => {
 });
 
 const previewAspectClass = computed(() => formatMeta.value?.aspectClass ?? '');
-const useNaturalPreview = computed(() => props.aspectFormat === 'portrait');
+/** Hero e lateral: preview igual ao checkout (imagem inteira, sem crop). */
+const useNaturalPreview = computed(() => props.aspectFormat === 'portrait' || props.aspectFormat === 'hero');
 
 function getCsrfToken() {
     const match = document.cookie.match(/XSRF-TOKEN=([^;]+)/);
@@ -91,7 +96,7 @@ async function onFileChange(e) {
             },
             withCredentials: true,
         });
-        emit('update:modelValue', data.url || '');
+        emit('update:modelValue', normalizeCheckoutImageUrl(data.url || ''));
         emit('uploaded', data);
     } catch (err) {
         const msg = err.response?.data?.message || err.response?.data?.errors?.image?.[0] || 'Falha no envio. Tente outra imagem.';

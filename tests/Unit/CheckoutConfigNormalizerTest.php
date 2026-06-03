@@ -76,4 +76,32 @@ class CheckoutConfigNormalizerTest extends TestCase
 
         $this->assertSame([], $config['appearance']['content_blocks']);
     }
+
+    public function test_normalizes_absolute_storage_urls_to_relative(): void
+    {
+        $config = CheckoutConfigNormalizer::normalize([
+            'appearance' => [
+                'content_blocks' => [
+                    [
+                        'id' => 'img-1',
+                        'type' => 'image',
+                        'url' => 'https://old-domain.test/storage/checkout/abc/hero.jpg',
+                        'format' => 'hero',
+                        'placement' => 'main',
+                        'link' => '',
+                        'alt' => '',
+                    ],
+                ],
+            ],
+        ]);
+
+        $this->assertSame(
+            '/storage/checkout/abc/hero.jpg',
+            $config['appearance']['content_blocks'][0]['url']
+        );
+        $this->assertSame(
+            ['/storage/checkout/abc/hero.jpg'],
+            $config['appearance']['banners']
+        );
+    }
 }

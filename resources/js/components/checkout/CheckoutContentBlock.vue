@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue';
 import { getImageFormat } from '@/lib/checkoutContentFormats';
+import { normalizeCheckoutImageUrl } from '@/lib/checkoutImageUrl';
 import { retryImageOnError } from '@/lib/imageLoadRetry';
 
 const props = defineProps({
@@ -15,11 +16,11 @@ const isText = computed(() => props.block?.type === 'text');
 
 const formatMeta = computed(() => getImageFormat(props.block?.format ?? 'wide'));
 
-/** Banners laterais: exibir imagem inteira (como antes), sem crop em caixa 2:3. */
-const isSidebarBanner = computed(() => {
+/** Exibe imagem inteira (sem crop): hero, lateral e formatos retrato. */
+const useContainImage = computed(() => {
     const fmt = props.block?.format ?? '';
     const place = props.dataPlacement ?? '';
-    return fmt === 'portrait' || place === 'sidebar' || place === 'side';
+    return fmt === 'hero' || fmt === 'portrait' || place === 'sidebar' || place === 'side';
 });
 
 const textAlignClass = computed(() => {
@@ -35,6 +36,8 @@ const imageAlt = computed(() => {
 });
 
 const linkUrl = computed(() => String(props.block?.link ?? '').trim());
+
+const imageSrc = computed(() => normalizeCheckoutImageUrl(props.block?.url ?? ''));
 
 const titleText = computed(() => String(props.block?.title ?? '').trim());
 const bodyText = computed(() => String(props.block?.body ?? '').trim());
@@ -64,7 +67,7 @@ const showBody = computed(() => bodyText.value !== '');
     </div>
 
     <component
-        v-else-if="isImage && block.url"
+        v-else-if="isImage && imageSrc"
         :is="linkUrl ? 'a' : 'div'"
         :href="linkUrl || undefined"
         :target="linkUrl ? '_blank' : undefined"
@@ -75,11 +78,11 @@ const showBody = computed(() => bodyText.value !== '');
         :data-block-id="block.id"
     >
         <div
-            v-if="isSidebarBanner"
+            v-if="useContainImage"
             class="w-full overflow-hidden bg-gray-100"
         >
             <img
-                :src="block.url"
+                :src="imageSrc"
                 :alt="imageAlt"
                 class="block h-auto w-full object-contain"
                 :class="imageClass"
@@ -90,7 +93,7 @@ const showBody = computed(() => bodyText.value !== '');
         </div>
         <div v-else class="relative w-full overflow-hidden bg-gray-100" :class="formatMeta.aspectClass">
             <img
-                :src="block.url"
+                :src="imageSrc"
                 :alt="imageAlt"
                 class="absolute inset-0 h-full w-full object-cover"
                 :class="imageClass"

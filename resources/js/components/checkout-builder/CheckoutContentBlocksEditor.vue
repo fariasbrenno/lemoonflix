@@ -198,7 +198,7 @@ const inputClass =
             <div class="mb-3 flex items-center justify-between gap-2">
                 <div>
                     <h4 class="text-sm font-semibold text-zinc-900 dark:text-white">Topo (Hero)</h4>
-                    <p class="text-xs text-zinc-500 dark:text-zinc-400">Proporção fixa 3:1 — ideal 1200×400 px</p>
+                    <p class="text-xs text-zinc-500 dark:text-zinc-400">Recomendado 1200×400 px (3:1) — a imagem aparece inteira, sem corte</p>
                 </div>
                 <Button type="button" variant="secondary" size="sm" @click="addImageBlock('hero', 'main')">
                     + Hero
