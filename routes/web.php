@@ -611,8 +611,6 @@ Route::middleware(['auth', 'admin.tenant', 'role:admin|infoprodutor|team', 'audi
         Route::delete('/integracoes/cademi/{cademi}', [\App\Http\Controllers\CademiController::class, 'destroy'])->name('integrations.cademi.destroy');
     Route::get('/integracoes/cademi/{cademi}/tags', [\App\Http\Controllers\CademiController::class, 'tags'])->name('integrations.cademi.tags');
 
-        Route::put('/integracoes/checkout-security', [\App\Http\Controllers\Integrations\CheckoutSecurityController::class, 'update'])->name('integrations.checkout-security.update');
-
         Route::post('/integracoes/conversion-pixels', [\App\Http\Controllers\ConversionPixelIntegrationController::class, 'store'])->name('integrations.conversion-pixels.store');
         Route::put('/integracoes/conversion-pixels/{conversionPixelIntegration}', [\App\Http\Controllers\ConversionPixelIntegrationController::class, 'update'])->name('integrations.conversion-pixels.update');
         Route::delete('/integracoes/conversion-pixels/{conversionPixelIntegration}', [\App\Http\Controllers\ConversionPixelIntegrationController::class, 'destroy'])->name('integrations.conversion-pixels.destroy');

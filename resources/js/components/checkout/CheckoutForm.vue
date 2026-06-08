@@ -9,7 +9,6 @@ import CheckoutDropdown from './CheckoutDropdown.vue';
 import CheckoutOrderBumps from './CheckoutOrderBumps.vue';
 import CheckoutCurrencyPicker from './CheckoutCurrencyPicker.vue';
 import CheckoutPaymentMethods from './CheckoutPaymentMethods.vue';
-import CheckoutTurnstile from './CheckoutTurnstile.vue';
 import AsaasCard from './gateways/asaas/Card.vue';
 import CajuPaySdkMount from './CajuPaySdkMount.vue';
 import {
@@ -116,17 +115,9 @@ function appendUtms(payload) {
 }
 
 const honeypotWebsite = ref('');
-const turnstileToken = ref('');
-const turnstileRef = ref(null);
-const requiresCaptcha = computed(() => !!props.checkoutSecurity?.requires_captcha);
-const turnstileConfig = computed(() => props.checkoutSecurity?.turnstile ?? {});
-const turnstileSiteKey = computed(() => turnstileConfig.value.site_key || props.checkoutSecurity?.turnstile_site_key || '');
 
 function appendCheckoutSecurity(payload) {
     payload.website = honeypotWebsite.value;
-    if (turnstileToken.value) {
-        payload['cf-turnstile-response'] = turnstileToken.value;
-    }
     return payload;
 }
 
@@ -192,26 +183,6 @@ function clearCheckoutIdempotencyKey() {
     } catch {
         // ignore
     }
-}
-
-async function ensureCaptchaBeforeSubmit() {
-    if (!turnstileActive.value || !turnstileSiteKey.value) {
-        return true;
-    }
-    if (String(turnstileToken.value || '').trim() !== '') {
-        return true;
-    }
-    try {
-        const token = await turnstileRef.value?.obtainToken?.(15000);
-        if (token) {
-            turnstileToken.value = token;
-            return true;
-        }
-    } catch (_) {
-        /* fall through */
-    }
-    form.setError('payment_method', 'Aguarde a verificação de segurança e tente novamente.');
-    return false;
 }
 
 function buildPurchaseContentsForPixel() {
@@ -322,7 +293,6 @@ const props = defineProps({
     cardGatewayKeys: { type: Object, default: () => ({}) },
     /** Preço BRL só do produto principal (sem bumps), para contents do pixel. */
     mainLinePriceBrl: { type: Number, default: 0 },
-    checkoutSecurity: { type: Object, default: () => ({ requires_captcha: false, turnstile_site_key: null, turnstile: { enabled: false, site_key: '', mode: 'pix_boleto' } }) },
     currencyList: { type: Array, default: () => [] },
     featuredCurrencies: { type: Array, default: () => [] },
     otherCurrencies: { type: Array, default: () => [] },
@@ -590,17 +560,6 @@ const form = useForm({
     address_neighborhood: '',
     address_city: '',
     address_state: '',
-});
-
-const turnstileActive = computed(() => {
-    const cfg = turnstileConfig.value;
-    if (cfg.enabled && cfg.site_key) {
-        const mode = cfg.mode || 'pix_boleto';
-        if (mode === 'disabled') return false;
-        if (mode === 'all_payments') return true;
-        return ['pix', 'pix_auto', 'boleto'].includes(form.payment_method);
-    }
-    return requiresCaptcha.value && !!turnstileSiteKey.value;
 });
 
 const isPixLike = computed(() => form.payment_method === 'pix' || form.payment_method === 'pix_auto');
@@ -1498,8 +1457,6 @@ function startCajuPayPolling(token) {
 onBeforeUnmount(() => stopCajuPayPolling());
 
 watch(() => form.payment_method, () => {
-    turnstileToken.value = '';
-    turnstileRef.value?.reset?.();
     cajupayError.value = '';
     // Mudou de método: invalida a sessão CajuPay para forçar criação de uma nova
     // (cada sessão é específica para um método).
@@ -2267,10 +2224,7 @@ async function submitCajuPaySdkFlow(paymentMethod) {
     }
 }
 
-async function submit() {
-    if (!(await ensureCaptchaBeforeSubmit())) {
-        return;
-    }
+function submit() {
     callTrackFieldApi('submit', 'reached');
     callTrackFieldApi('submit', 'completed');
     const methods = checkoutPaymentMethods.value;
@@ -3534,12 +3488,6 @@ async function submit() {
                 aria-hidden="true"
                 class="pointer-events-none absolute -left-[9999px] h-0 w-0 overflow-hidden opacity-0"
                 data-checkout="honeypot"
-            />
-            <CheckoutTurnstile
-                v-if="turnstileActive && turnstileSiteKey"
-                ref="turnstileRef"
-                v-model="turnstileToken"
-                :site-key="turnstileSiteKey"
             />
             <button
                 v-if="(form.payment_method !== 'card' || !isCardGatewayMercadopago) && !isCajuPayWalletSdk"

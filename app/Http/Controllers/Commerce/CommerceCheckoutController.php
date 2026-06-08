@@ -105,7 +105,6 @@ class CommerceCheckoutController extends Controller
             'card_pagarme_public_key' => $cardCredentials['card_pagarme_public_key'],
             'card_pagarme_api_base_url' => $cardCredentials['card_pagarme_api_base_url'],
             'card_gateway_keys' => $cardCredentials['card_gateway_keys'],
-            'checkout_security' => app(CheckoutAbuseGuard::class)->securityPropsForRequest($request, $productModel),
             'payment_summary' => $paymentSummary,
             'checkout_extra' => [],
             'plugin_checkout_extensions' => PluginCheckoutExtensionRegistry::activeForOrder($order, 'commerce'),

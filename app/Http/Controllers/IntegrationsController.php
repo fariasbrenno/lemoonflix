@@ -15,7 +15,6 @@ use App\Models\ApiApplication;
 use App\Models\Webhook;
 use App\Models\InboundWebhookEndpoint;
 use App\Http\Controllers\Integrations\ExternalCheckoutController;
-use App\Support\CheckoutTurnstileSettings;
 use App\Support\WebhookEventCatalog;
 use App\Plugins\PluginExtensionRegistry;
 use App\Plugins\PluginRegistry;
@@ -202,7 +201,6 @@ class IntegrationsController extends Controller
             'plugin_apps' => $pluginApps,
             'conversion_pixel_integrations' => $conversionPixelIntegrations,
             'external_checkout_endpoints' => $externalCheckoutEndpoints,
-            'checkout_security_settings' => CheckoutTurnstileSettings::forSettingsForm(),
         ]);
     }
 

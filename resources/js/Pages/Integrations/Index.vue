@@ -11,7 +11,6 @@ import WebhookSidebar from '@/components/integrations/WebhookSidebar.vue';
 import ExternalCheckoutSidebar from '@/components/integrations/ExternalCheckoutSidebar.vue';
 import CademiSidebar from '@/components/integrations/CademiSidebar.vue';
 import ConversionPixelsSidebar from '@/components/integrations/ConversionPixelsSidebar.vue';
-import CheckoutSecuritySidebar from '@/components/integrations/CheckoutSecuritySidebar.vue';
 import GatewayCard from '@/components/settings/GatewayCard.vue';
 import GatewayConfigSidebar from '@/components/settings/GatewayConfigSidebar.vue';
 import { CreditCard, Zap } from 'lucide-vue-next';
@@ -59,13 +58,6 @@ const APPS_BASE = [
         name: 'Pixels e rastreamento',
         description: 'Meta Ads, TikTok, Google Ads, Google Analytics e scripts. Reutilize nos produtos sem cadastrar de novo.',
     },
-    {
-        id: 'checkout_security',
-        name: 'Segurança do checkout',
-        description: 'Cloudflare Turnstile opcional contra bots e flood. Rate limits e reuso de PIX já ativos no servidor.',
-        image: 'images/integrations/turnstile.jpg',
-        imageCover: true,
-    },
 ];
 
 const props = defineProps({
@@ -88,7 +80,6 @@ const props = defineProps({
     plugin_apps: { type: Array, default: () => [] },
     conversion_pixel_integrations: { type: Array, default: () => [] },
     external_checkout_endpoints: { type: Array, default: () => [] },
-    checkout_security_settings: { type: Object, default: () => ({}) },
 });
 
 import { usePluginComponentResolver } from '@/composables/usePluginComponentResolver';
@@ -146,13 +137,6 @@ const APPS = computed(() =>
                 status: hasActive ? 'active' : undefined,
             };
         }
-        if (app.id === 'checkout_security') {
-            const active = Boolean(props.checkout_security_settings?.checkout_turnstile_active);
-            return {
-                ...app,
-                status: active ? 'active' : undefined,
-            };
-        }
         return app;
     }),
         ...((props.plugin_apps || []).map((p) => ({
@@ -176,7 +160,6 @@ const spedySidebarOpen = ref(false);
 const cademiSidebarOpen = ref(false);
 const conversionPixelsSidebarOpen = ref(false);
 const externalCheckoutSidebarOpen = ref(false);
-const checkoutSecuritySidebarOpen = ref(false);
 const pluginSidebarOpen = ref(false);
 const selectedPluginSlot = ref(null);
 const selectedPluginAppName = ref(null);
@@ -233,18 +216,6 @@ function closeExternalCheckoutSidebar() {
 
 function onExternalCheckoutSaved() {
     router.reload({ only: ['external_checkout_endpoints', 'products'] });
-}
-
-function openCheckoutSecuritySidebar() {
-    checkoutSecuritySidebarOpen.value = true;
-}
-
-function closeCheckoutSecuritySidebar() {
-    checkoutSecuritySidebarOpen.value = false;
-}
-
-function onCheckoutSecuritySaved() {
-    router.reload({ only: ['checkout_security_settings'] });
 }
 
 function openConversionPixelsSidebar() {
@@ -305,8 +276,6 @@ function onAppClick(app) {
         openCademiSidebar();
     } else if (app.id === 'conversion_pixels') {
         openConversionPixelsSidebar();
-    } else if (app.id === 'checkout_security') {
-        openCheckoutSecuritySidebar();
     } else if (app.plugin) {
         openPluginSidebar(app);
     }
@@ -483,13 +452,6 @@ watch(() => page.url, () => syncGatewayFromQuery());
             @close="closeExternalCheckoutSidebar"
             @saved="onExternalCheckoutSaved"
         />
-        <CheckoutSecuritySidebar
-            :open="checkoutSecuritySidebarOpen"
-            :settings="checkout_security_settings"
-            @close="closeCheckoutSecuritySidebar"
-            @saved="onCheckoutSecuritySaved"
-        />
-
         <!-- Plugin sidebars (ex.: AutoZap) -->
         <Teleport to="body">
             <Transition

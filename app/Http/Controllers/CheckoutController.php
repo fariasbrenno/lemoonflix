@@ -442,8 +442,6 @@ class CheckoutController extends Controller
         /** Preview ao vivo no Builder (iframe): o front confia neste flag, não só na query (Inertia pode alterar URL). */
         $payload['checkout_builder_preview'] = $request->query('preview') === '1';
 
-        $payload['checkout_security'] = app(CheckoutAbuseGuard::class)->securityPropsForRequest($request, $product);
-
         $checkoutEventData = new \ArrayObject([
             'product' => $payload['product'] ?? [],
             'config' => $config,

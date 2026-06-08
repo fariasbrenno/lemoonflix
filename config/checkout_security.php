@@ -20,14 +20,6 @@ return [
         'lookback_hours' => (int) env('CHECKOUT_PENDING_LOOKBACK_HOURS', 1),
     ],
 
-    'captcha' => [
-        'mode' => env('CHECKOUT_CAPTCHA_MODE', 'adaptive'),
-        'soft_attempts' => (int) env('CHECKOUT_CAPTCHA_SOFT_ATTEMPTS', 2),
-        'soft_window_minutes' => (int) env('CHECKOUT_CAPTCHA_SOFT_WINDOW_MINUTES', 10),
-        'site_key' => env('CHECKOUT_TURNSTILE_SITE_KEY', ''),
-        'secret_key' => env('CHECKOUT_TURNSTILE_SECRET_KEY', ''),
-    ],
-
     'stale_pending_hours' => (int) env('CHECKOUT_STALE_PENDING_HOURS', 24),
 
     'flood' => [
