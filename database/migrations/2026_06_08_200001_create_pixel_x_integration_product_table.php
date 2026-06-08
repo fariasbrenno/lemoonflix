@@ -8,9 +8,8 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (Schema::hasTable('pixel_x_integration_product')) {
-            return;
-        }
+        // Drop first to handle the case of a partial table from a failed prior run
+        Schema::dropIfExists('pixel_x_integration_product');
 
         Schema::create('pixel_x_integration_product', function (Blueprint $table) {
             $table->unsignedBigInteger('pixel_x_integration_id');
@@ -26,7 +25,8 @@ return new class extends Migration
                 ->on('products')
                 ->cascadeOnDelete();
 
-            $table->unique(['pixel_x_integration_id', 'product_id']);
+            // Explicit short name — auto-generated name exceeds MySQL's 64-char limit
+            $table->unique(['pixel_x_integration_id', 'product_id'], 'pxip_unique');
         });
     }
 
