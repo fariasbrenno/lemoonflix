@@ -35,6 +35,26 @@
     body.member-builder-active #app {
         pointer-events: none;
     }
+
+    /* Painel / PWA: evita zoom ao focar campos no iOS (font-size < 16px) e double-tap zoom */
+    html.panel-app,
+    html.panel-app body {
+        touch-action: manipulation;
+        -webkit-text-size-adjust: 100%;
+    }
+
+    @media (max-width: 1023px) {
+        html.panel-app input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']),
+        html.panel-app select,
+        html.panel-app textarea {
+            font-size: 16px;
+        }
+    }
+
+    html.pwa-standalone,
+    html.pwa-standalone body {
+        overscroll-behavior: none;
+    }
 }
 
 /* Utilities para sidebar */

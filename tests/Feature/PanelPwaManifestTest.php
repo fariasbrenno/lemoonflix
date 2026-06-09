@@ -99,4 +99,14 @@ class PanelPwaManifestTest extends TestCase
     {
         $this->assertFileDoesNotExist(public_path('manifest.json'));
     }
+
+    public function test_panel_pages_use_fixed_viewport_to_prevent_zoom(): void
+    {
+        $response = $this->get('/login');
+
+        $response->assertStatus(200);
+        $response->assertSee('maximum-scale=1', false);
+        $response->assertSee('user-scalable=no', false);
+        $response->assertSee('class="panel-app"', false);
+    }
 }

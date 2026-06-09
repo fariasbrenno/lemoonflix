@@ -5,12 +5,16 @@
     $skipPanelPwa = $isMemberArea || $isCheckout;
 @endphp
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" @class(['panel-app' => ! $skipPanelPwa])>
 <head>
     <meta charset="utf-8">
+    @if($skipPanelPwa)
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    @else
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+    @endif
     <script>
-        (function(){try{var s=localStorage.getItem('theme');var t=s||'dark';document.documentElement.classList.toggle('dark',t==='dark');}catch(_){}})();
+        (function(){try{var s=localStorage.getItem('theme');var t=s||'dark';document.documentElement.classList.toggle('dark',t==='dark');@unless($skipPanelPwa)if(window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true){document.documentElement.classList.add('pwa-standalone');}@endunless}catch(_){}})();
     </script>
     <meta name="csrf-token" content="{{ csrf_token() }}">
     @if(!empty($openGraph) && is_array($openGraph))
