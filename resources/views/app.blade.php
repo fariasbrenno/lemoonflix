@@ -50,10 +50,9 @@
         $wlFavicon = \App\Support\BrandFavicon::publicUrl();
         $wlThemeColor = config('getfy.pwa_theme_color');
         $wlThemeColor = ($wlThemeColor !== null && $wlThemeColor !== '') ? $wlThemeColor : config('getfy.theme_primary', '#0ea5e9');
-        $pwaIconPath = config('getfy.pwa_icon') ?: config('getfy.pwa_icon_192');
-        $wlAppleIcon = (is_string($pwaIconPath) && $pwaIconPath !== '' && is_file(public_path(ltrim($pwaIconPath, '/'))))
-            ? url('/'.ltrim($pwaIconPath, '/'))
-            : null;
+        $wlAppleIcon = \App\Support\PwaIcon::customPublicUrl('192')
+            ?? \App\Support\PwaIcon::customPublicUrl('512')
+            ?? \App\Support\PwaIcon::publicUrl('192');
     @endphp
     <link rel="icon" href="{{ $wlFavicon }}" type="image/png" sizes="32x32">
     <link rel="shortcut icon" href="{{ $wlFavicon }}" type="image/png">

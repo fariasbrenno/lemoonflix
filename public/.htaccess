@@ -27,6 +27,9 @@
     # Favicon da marca: versão otimizada 32px via Laravel (evita PNG grande em branco na aba)
     RewriteRule ^brand/favicon\.png$ index.php [L]
 
+    # PWA: manifest dinâmico via Laravel (White Label)
+    RewriteRule ^manifest\.json$ index.php [L]
+
     # Raiz: redireciona para /login (quando document root é public/)
     RewriteRule ^/?$ /login [R=302,L]
 

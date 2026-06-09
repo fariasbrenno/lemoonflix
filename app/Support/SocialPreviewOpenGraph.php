@@ -133,16 +133,16 @@ class SocialPreviewOpenGraph
 
     private static function resolvePlatformPreviewImage(Request $request): ?string
     {
-        foreach ([
-            config('getfy.pwa_icon_512'),
-            config('getfy.pwa_icon_192'),
-            config('getfy.pwa_icon'),
-            config('getfy.app_logo_icon'),
-        ] as $path) {
-            $url = self::absoluteConfiguredAsset($path, $request);
+        foreach (['512', '192', null] as $size) {
+            $url = PwaIcon::customPublicUrl($size);
             if ($url !== null) {
                 return $url;
             }
+        }
+
+        $logoIcon = config('getfy.app_logo_icon');
+        if (is_string($logoIcon) && trim($logoIcon) !== '' && ! PwaIcon::isDefaultPath($logoIcon)) {
+            return self::absoluteConfiguredAsset($logoIcon, $request);
         }
 
         return null;

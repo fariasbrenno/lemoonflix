@@ -3,51 +3,7 @@ import { config as inertiaConfig } from '@inertiajs/core';
 
 inertiaConfig.set('prefetch.hoverDelay', 40);
 
-// Migração: versões antigas registravam /painel-sw.js com scope "/" e isso pode interceptar checkout + scripts de terceiros (Meta Pixel).
-// Aqui removemos automaticamente o registro legado (scope raiz) quando existir.
-if (typeof window !== 'undefined' && typeof navigator !== 'undefined' && navigator.serviceWorker?.getRegistrations) {
-    try {
-        navigator.serviceWorker.getRegistrations().then((regs) => {
-            const origin = window.location.origin;
-            regs.forEach((reg) => {
-                const scriptUrl = reg?.active?.scriptURL || reg?.installing?.scriptURL || reg?.waiting?.scriptURL || '';
-                const scope = reg?.scope || '';
-                const isPainelSw = typeof scriptUrl === 'string' && scriptUrl.includes('/painel-sw.js');
-                const isRootScope = typeof scope === 'string' && scope === `${origin}/`;
-                if (isPainelSw && isRootScope) {
-                    reg.unregister().catch(() => {});
-                }
-            });
-        });
-    } catch (_) {}
-}
-
-// Registrar Service Worker do painel apenas fora da área de membros e do checkout (sem prompts/efeitos PWA no checkout)
-let skipPanelPwa = false;
-if (typeof window !== 'undefined') {
-    const path = window.location.pathname;
-    const isCheckout = path.startsWith('/c/') || path.startsWith('/checkout') || path.startsWith('/api-checkout');
-    let isMemberArea = path.startsWith('/m/');
-    if (!isMemberArea) {
-        try {
-            const appEl = document.getElementById('app');
-            const data = appEl?.getAttribute('data-page');
-            if (data) {
-                const page = JSON.parse(data);
-                const comp = page?.component;
-                const url = page?.url ?? '';
-                isMemberArea = (typeof comp === 'string' && comp.includes('MemberAreaApp')) || (typeof url === 'string' && url.startsWith('/m/'));
-            }
-        } catch (_) {}
-    }
-    skipPanelPwa = isMemberArea || isCheckout;
-}
-if (!skipPanelPwa && typeof navigator !== 'undefined' && navigator.serviceWorker) {
-    // Scope restrito evita que o SW do painel intercepte o checkout e scripts de terceiros (pixels, gateways).
-    navigator.serviceWorker.register('/painel-sw.js', { scope: '/painel/' }).catch((error) => {
-        console.warn('[PWA] Falha ao registrar service worker:', error);
-    });
-}
+// Service worker do painel e push: registrados em usePanelPushSubscribe (com migração ordenada do scope legado).
 
 import { createInertiaApp, usePage } from '@inertiajs/vue3';
 import { createApp as createVueApp, h } from 'vue';

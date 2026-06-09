@@ -1235,7 +1235,7 @@ class MemberAreaAppController extends Controller
             return response()->json(['message' => 'Notificações push não estão habilitadas para esta área.'], 403);
         }
         $validated = $request->validate([
-            'endpoint' => ['required', 'string', 'max:500'],
+            'endpoint' => ['required', 'string', 'max:2048'],
             'keys' => ['required', 'array'],
             'keys.auth' => ['required', 'string'],
             'keys.p256dh' => ['required', 'string'],

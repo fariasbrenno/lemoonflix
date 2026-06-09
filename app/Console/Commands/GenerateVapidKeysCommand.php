@@ -2,12 +2,13 @@
 
 namespace App\Console\Commands;
 
+use App\Support\VapidEnvKeys;
 use Illuminate\Console\Command;
 use Minishlink\WebPush\VAPID;
 
 class GenerateVapidKeysCommand extends Command
 {
-    protected $signature = 'pwa:vapid';
+    protected $signature = 'pwa:vapid {--force : Regenera mesmo se já existirem chaves válidas}';
 
     protected $description = 'Gera chaves VAPID para PWA (notificações push) e atualiza o .env';
 
@@ -16,13 +17,26 @@ class GenerateVapidKeysCommand extends Command
         $envPath = base_path('.env');
         if (! file_exists($envPath)) {
             $this->error('Arquivo .env não encontrado.');
+
             return self::FAILURE;
+        }
+
+        $content = file_get_contents($envPath);
+        $existingPublic = $this->readEnvValue($content, 'PWA_VAPID_PUBLIC');
+        $existingPrivate = $this->readEnvValue($content, 'PWA_VAPID_PRIVATE');
+
+        if (! $this->option('force') && VapidEnvKeys::normalizedPairLooksValid($existingPublic, $existingPrivate)) {
+            $this->info('Chaves VAPID já configuradas e válidas no .env.');
+            $this->comment('Use --force para regenerar (inscrições push existentes precisarão ser reativadas).');
+
+            return self::SUCCESS;
         }
 
         try {
             $keys = VAPID::createVapidKeys();
         } catch (\Throwable $e) {
-            $this->error('Falha ao gerar chaves: ' . $e->getMessage());
+            $this->error('Falha ao gerar chaves: '.$e->getMessage());
+
             return self::FAILURE;
         }
 
@@ -36,39 +50,50 @@ class GenerateVapidKeysCommand extends Command
                 'privateKey' => $privateKey,
             ]);
         } catch (\Throwable $e) {
-            $this->error('Chaves geradas falharam na validação interna: ' . $e->getMessage());
+            $this->error('Chaves geradas falharam na validação interna: '.$e->getMessage());
 
             return self::FAILURE;
         }
 
-        $content = file_get_contents($envPath);
         $hasPublic = preg_match('/^PWA_VAPID_PUBLIC=/m', $content);
         $hasPrivate = preg_match('/^PWA_VAPID_PRIVATE=/m', $content);
 
-        $publicEscaped = '"' . str_replace('"', '\\"', $publicKey) . '"';
-        $privateEscaped = '"' . str_replace('"', '\\"', $privateKey) . '"';
+        $publicEscaped = '"'.str_replace('"', '\\"', $publicKey).'"';
+        $privateEscaped = '"'.str_replace('"', '\\"', $privateKey).'"';
 
         if ($hasPublic) {
-            $content = preg_replace('/^PWA_VAPID_PUBLIC=.*/m', 'PWA_VAPID_PUBLIC=' . $publicEscaped, $content);
+            $content = preg_replace('/^PWA_VAPID_PUBLIC=.*/m', 'PWA_VAPID_PUBLIC='.$publicEscaped, $content);
         } else {
             $content .= "\n# PWA Painel: chaves VAPID (geradas via php artisan pwa:vapid)\n";
-            $content .= 'PWA_VAPID_PUBLIC=' . $publicEscaped . "\n";
+            $content .= 'PWA_VAPID_PUBLIC='.$publicEscaped."\n";
         }
         if ($hasPrivate) {
-            $content = preg_replace('/^PWA_VAPID_PRIVATE=.*/m', 'PWA_VAPID_PRIVATE=' . $privateEscaped, $content);
+            $content = preg_replace('/^PWA_VAPID_PRIVATE=.*/m', 'PWA_VAPID_PRIVATE='.$privateEscaped, $content);
         } else {
-            $content .= 'PWA_VAPID_PRIVATE=' . $privateEscaped . "\n";
+            $content .= 'PWA_VAPID_PRIVATE='.$privateEscaped."\n";
         }
 
         file_put_contents($envPath, $content);
 
         $this->info('Chaves VAPID geradas e salvas no .env.');
         $this->line('');
-        $this->line('PWA_VAPID_PUBLIC=' . $publicKey);
-        $this->line('PWA_VAPID_PRIVATE=' . str_repeat('*', min(strlen($privateKey), 20)) . '...');
+        $this->line('PWA_VAPID_PUBLIC='.$publicKey);
+        $this->line('PWA_VAPID_PRIVATE='.str_repeat('*', min(strlen($privateKey), 20)).'...');
         $this->line('');
         $this->comment('Reinicie o servidor ou rode "php artisan config:clear" para carregar as novas variáveis.');
+        $this->comment('Usuários com push ativo devem reativar notificações no painel após trocar o par VAPID.');
 
         return self::SUCCESS;
+    }
+
+    private function readEnvValue(string $content, string $key): ?string
+    {
+        if (! preg_match('/^\s*'.preg_quote($key, '/').'\s*=\s*(.+)\s*$/mi', $content, $m)) {
+            return null;
+        }
+
+        $value = trim((string) ($m[1] ?? ''), " \t\n\r\0\x0B\"'`");
+
+        return $value !== '' ? $value : null;
     }
 }
