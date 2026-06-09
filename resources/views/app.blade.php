@@ -48,6 +48,10 @@
     @unless($skipPanelPwa)
     @php
         $wlFavicon = \App\Support\BrandFavicon::publicUrl();
+        $wlAppName = trim((string) config('getfy.app_name', config('app.name', 'Getfy')));
+        if ($wlAppName === '') {
+            $wlAppName = 'Getfy';
+        }
         $wlThemeColor = config('getfy.pwa_theme_color');
         $wlThemeColor = ($wlThemeColor !== null && $wlThemeColor !== '') ? $wlThemeColor : config('getfy.theme_primary', '#0ea5e9');
         $wlAppleIcon = \App\Support\PwaIcon::customPublicUrl('192')
@@ -61,6 +65,7 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="{{ e($wlAppName) }}">
     @if($wlAppleIcon)
     <link rel="apple-touch-icon" href="{{ $wlAppleIcon }}">
     @endif

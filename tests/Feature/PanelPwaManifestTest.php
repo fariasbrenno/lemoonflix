@@ -56,10 +56,26 @@ class PanelPwaManifestTest extends TestCase
         $response->assertStatus(200);
         $response->assertJsonMissing(['name' => 'Getfy']);
         $response->assertJsonFragment(['name' => 'Plataforma XYZ']);
+        $response->assertJsonFragment(['short_name' => 'Plataforma X']);
 
         $sources = array_column($response->json('icons'), 'src');
         $this->assertContains('https://cdn.example.com/pwa-192.png', $sources);
         $this->assertContains('https://cdn.example.com/pwa-512.png', $sources);
+    }
+
+    public function test_manifest_short_name_truncates_long_app_name(): void
+    {
+        config([
+            'getfy.app_name' => 'Minha Plataforma Incrível',
+            'getfy.pwa_icon_192' => '/icons/icon.png',
+            'getfy.pwa_icon_512' => '/icons/icon.png',
+        ]);
+
+        $response = $this->get('/manifest.json');
+
+        $response->assertStatus(200);
+        $response->assertJsonFragment(['name' => 'Minha Plataforma Incrível']);
+        $response->assertJsonFragment(['short_name' => 'Minha Plataf']);
     }
 
     public function test_manifest_falls_back_to_default_icons_without_white_label(): void

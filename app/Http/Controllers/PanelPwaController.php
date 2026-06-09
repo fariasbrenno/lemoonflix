@@ -25,7 +25,11 @@ class PanelPwaController extends Controller
             ]);
         }
 
-        $appName = config('getfy.app_name', 'Getfy');
+        $appName = trim((string) config('getfy.app_name', 'Getfy'));
+        if ($appName === '') {
+            $appName = 'Getfy';
+        }
+        $shortName = mb_strlen($appName) > 12 ? mb_substr($appName, 0, 12) : $appName;
         $themeColor = config('getfy.pwa_theme_color');
         $themeColor = ($themeColor !== null && $themeColor !== '') ? (string) $themeColor : (string) config('getfy.theme_primary', '#0ea5e9');
 
@@ -34,7 +38,7 @@ class PanelPwaController extends Controller
         $manifest = [
             'id' => '/',
             'name' => $appName,
-            'short_name' => $appName,
+            'short_name' => $shortName,
             'start_url' => '/dashboard',
             'scope' => '/',
             'display' => 'standalone',
