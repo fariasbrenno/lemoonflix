@@ -2,7 +2,7 @@
 defineProps({
     method: { type: Object, required: true },
     selected: { type: Boolean, default: false },
-    primaryColor: { type: String, default: '#0ea5e9' },
+    primaryColor: { type: String, default: '#6366f1' },
 });
 </script>
 
@@ -13,11 +13,11 @@ defineProps({
     >
         <img
             src="/images/gateways/pix.svg"
-            alt="PIX"
-            class="h-6 w-6 shrink-0 object-contain self-center"
+            alt="PIX Parcelado"
+            class="h-7 w-7 shrink-0 object-contain self-center"
         />
     </span>
     <div class="min-w-0 flex-1">
-        <span class="block font-medium text-gray-900">{{ method.label }}</span>
+        <span class="block font-medium text-gray-900">{{ method.label || 'PIX Parcelado' }}</span>
     </div>
 </template>
