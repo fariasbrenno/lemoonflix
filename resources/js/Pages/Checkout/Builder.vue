@@ -7,6 +7,7 @@ import Button from '@/components/ui/Button.vue';
 import Toggle from '@/components/ui/Toggle.vue';
 import ImageUpload from '@/components/checkout/ImageUpload.vue';
 import CheckoutContentBlocksEditor from '@/components/checkout-builder/CheckoutContentBlocksEditor.vue';
+import HorizontalScrollTabs from '@/components/ui/HorizontalScrollTabs.vue';
 import { initContentBlocksFromAppearance } from '@/lib/checkoutContentFormats';
 import {
     PREVIEW_MESSAGE_TYPE,
@@ -470,13 +471,15 @@ const inputClass =
             <!-- Sidebar esquerda: rolagem apenas aqui -->
             <div class="min-h-0 w-full shrink-0 space-y-4 overflow-y-auto lg:w-[380px] lg:max-h-full">
                 <!-- Tabs -->
-                <div
-                    class="flex flex-wrap gap-1 rounded-xl border border-zinc-200 bg-white p-1 dark:border-zinc-700 dark:bg-zinc-800"
+                <HorizontalScrollTabs
+                    aria-label="Abas do checkout"
+                    :bleed="false"
+                    nav-class="gap-1 rounded-xl border border-zinc-200 bg-white p-1 dark:border-zinc-700 dark:bg-zinc-800"
                 >
                     <button
                         type="button"
                         :class="[
-                            'min-w-0 flex-1 basis-[calc(50%-0.25rem)] rounded-lg px-2 py-2 text-xs font-medium transition sm:basis-auto sm:px-3 sm:text-sm',
+                            'rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm',
                             activeTab === 'geral'
                                 ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
                                 : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-700',
@@ -488,7 +491,7 @@ const inputClass =
                     <button
                         type="button"
                         :class="[
-                            'min-w-0 flex-1 basis-[calc(50%-0.25rem)] rounded-lg px-2 py-2 text-xs font-medium transition sm:basis-auto sm:px-3 sm:text-sm',
+                            'rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm',
                             activeTab === 'recursos'
                                 ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
                                 : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-700',
@@ -500,7 +503,7 @@ const inputClass =
                     <button
                         type="button"
                         :class="[
-                            'min-w-0 flex-1 basis-[calc(50%-0.25rem)] rounded-lg px-2 py-2 text-xs font-medium transition sm:basis-auto sm:px-3 sm:text-sm',
+                            'rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm',
                             activeTab === 'vendas'
                                 ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
                                 : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-700',
@@ -512,7 +515,7 @@ const inputClass =
                     <button
                         type="button"
                         :class="[
-                            'min-w-0 flex-1 basis-[calc(50%-0.25rem)] rounded-lg px-2 py-2 text-xs font-medium transition sm:basis-auto sm:px-3 sm:text-sm',
+                            'rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm',
                             activeTab === 'template'
                                 ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
                                 : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-700',
@@ -524,7 +527,7 @@ const inputClass =
                     <button
                         type="button"
                         :class="[
-                            'min-w-0 flex-1 basis-[calc(50%-0.25rem)] rounded-lg px-2 py-2 text-xs font-medium transition sm:basis-auto sm:px-3 sm:text-sm',
+                            'rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm',
                             activeTab === 'social'
                                 ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
                                 : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-700',
@@ -536,7 +539,7 @@ const inputClass =
                     <button
                         type="button"
                         :class="[
-                            'flex min-w-0 flex-1 basis-full items-center justify-center gap-1 rounded-lg px-2 py-2 text-xs font-medium transition sm:basis-auto sm:flex-1 sm:px-3 sm:text-sm',
+                            'flex items-center gap-1 rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm',
                             activeTab === 'avancado'
                                 ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
                                 : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-700',
@@ -546,7 +549,7 @@ const inputClass =
                         <Code2 class="h-3.5 w-3.5 shrink-0 opacity-80" />
                         Avançado
                     </button>
-                </div>
+                </HorizontalScrollTabs>
 
                 <!-- Aba Geral -->
                 <div v-show="activeTab === 'geral'" class="space-y-4">

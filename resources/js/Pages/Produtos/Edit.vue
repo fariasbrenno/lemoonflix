@@ -5,6 +5,7 @@ import { useSidebar } from '@/composables/useSidebar';
 import LayoutInfoprodutor from '@/Layouts/LayoutInfoprodutor.vue';
 import Button from '@/components/ui/Button.vue';
 import BetaBadge from '@/components/ui/BetaBadge.vue';
+import HorizontalScrollTabs from '@/components/ui/HorizontalScrollTabs.vue';
 import Toggle from '@/components/ui/Toggle.vue';
 import Checkbox from '@/components/ui/Checkbox.vue';
 import GatewaySelect from '@/components/ui/GatewaySelect.vue';
@@ -1358,7 +1359,7 @@ function submit() {
 </script>
 
 <template>
-    <div class="flex flex-col lg:flex-row lg:gap-6 space-y-6 lg:space-y-0 lg:pl-2">
+    <div class="flex min-w-0 flex-col space-y-6 lg:flex-row lg:gap-6 lg:space-y-0 lg:pl-2">
         <!-- Desktop: sidebar vertical de abas (alinhado à esquerda junto ao sidebar principal) -->
         <aside
             class="hidden lg:flex lg:flex-col w-56 shrink-0 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 p-2"
@@ -1401,16 +1402,17 @@ function submit() {
         </aside>
 
         <!-- Mobile: abas em carrossel horizontal -->
-        <nav
-            class="flex gap-2 overflow-x-auto pb-2 snap-x snap-mandatory no-scrollbar lg:hidden rounded-xl bg-zinc-100/80 p-1 dark:bg-zinc-800/80"
+        <HorizontalScrollTabs
             aria-label="Abas de edição do produto"
+            wrapper-class="pb-2 lg:hidden"
+            nav-class="gap-2 snap-x snap-mandatory rounded-xl bg-zinc-100/80 p-1 dark:bg-zinc-800/80"
         >
             <template v-for="tab in TABS" :key="tab.id">
                 <a
                     v-if="tab.linkOnly && tab.id === 'member_builder' && produto.type === 'area_membros'"
                     :href="`/produtos/${produto.id}/member-builder`"
                     :class="[
-                        'flex shrink-0 snap-center items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200',
+                        'flex snap-center items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200',
                         'text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white',
                     ]"
                     @click.prevent="goToMemberBuilder"
@@ -1423,7 +1425,7 @@ function submit() {
                     type="button"
                     :ref="currentTab === tab.id ? activeTabRef : undefined"
                     :class="[
-                        'flex shrink-0 snap-center items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200',
+                        'flex snap-center items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200',
                         currentTab === tab.id
                             ? 'bg-white text-[var(--color-primary)] shadow-sm dark:bg-zinc-700 dark:text-[var(--color-primary)]'
                             : 'text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white',
@@ -1438,7 +1440,7 @@ function submit() {
                     </span>
                 </button>
             </template>
-        </nav>
+        </HorizontalScrollTabs>
 
         <!-- Conteúdo da aba -->
         <div class="flex-1 min-w-0 space-y-6">

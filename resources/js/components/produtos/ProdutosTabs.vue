@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import { Package, TicketPercent, Users, Handshake, UserPlus } from 'lucide-vue-next';
 import BetaBadge from '@/components/ui/BetaBadge.vue';
+import HorizontalScrollTabs from '@/components/ui/HorizontalScrollTabs.vue';
 
 const page = usePage();
 const isProdutos = computed(() => {
@@ -16,10 +17,7 @@ const isAfiliadosProgramas = computed(() => page.url.startsWith('/produtos/afili
 </script>
 
 <template>
-    <nav
-        class="inline-flex rounded-xl bg-zinc-100/80 p-1 dark:bg-zinc-800/80"
-        aria-label="Abas de produtos"
-    >
+    <HorizontalScrollTabs aria-label="Abas de produtos">
         <Link
             href="/produtos"
             :class="[
@@ -86,5 +84,5 @@ const isAfiliadosProgramas = computed(() => page.url.startsWith('/produtos/afili
                 <BetaBadge size="xs" />
             </span>
         </Link>
-    </nav>
+    </HorizontalScrollTabs>
 </template>

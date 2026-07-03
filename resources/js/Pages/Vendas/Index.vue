@@ -6,6 +6,7 @@ import LayoutInfoprodutor from '@/Layouts/LayoutInfoprodutor.vue';
 import { useInertiaPagination } from '@/composables/useInertiaPagination';
 import { whatsappUrlForPhone } from '@/lib/utils';
 import VendasTabs from '@/components/vendas/VendasTabs.vue';
+import HorizontalScrollTabs from '@/components/ui/HorizontalScrollTabs.vue';
 import VendaDetailSidebar from '@/components/vendas/VendaDetailSidebar.vue';
 import PluginRuntimeMount from '@/components/plugins/PluginRuntimeMount.vue';
 import PluginRenderZone from '@/components/plugins/PluginRenderZone.vue';
@@ -559,11 +560,8 @@ function openProofExport() {
         </div>
 
         <!-- Abas de filtro e exportação -->
-        <div class="flex flex-wrap items-center justify-between gap-3">
-            <nav
-                class="inline-flex rounded-xl bg-zinc-100/80 p-1 dark:bg-zinc-800/80"
-                aria-label="Filtrar vendas"
-            >
+        <div class="flex min-w-0 flex-wrap items-center justify-between gap-3">
+            <HorizontalScrollTabs aria-label="Filtrar vendas" class="min-w-0 max-w-full flex-1 sm:max-w-none">
                 <button
                     v-for="opt in filterOptions"
                     :key="opt.value"
@@ -579,7 +577,7 @@ function openProofExport() {
                 >
                     {{ opt.label }}
                 </button>
-            </nav>
+            </HorizontalScrollTabs>
             <div class="flex items-center gap-2">
                 <a
                     :href="exportCsvUrl"

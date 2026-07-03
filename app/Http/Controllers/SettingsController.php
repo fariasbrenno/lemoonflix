@@ -7,6 +7,7 @@ use App\Services\ExchangeRateService;
 use App\Support\CheckoutCurrencyCatalog;
 use App\Support\CheckoutTranslations;
 use App\Support\SharedHostingUpdater;
+use App\Support\VapidKeysManager;
 use Illuminate\Http\JsonResponse;
 use App\Support\DockerSetupState;
 use Illuminate\Http\Request;
@@ -89,6 +90,7 @@ class SettingsController extends Controller
             'app_url' => $appUrl,
             'base_path' => base_path(),
             'cron_url' => $cronUrl,
+            'push_vapid' => app(VapidKeysManager::class)->status(),
             'settings' => [
                 'email_provider' => Setting::get('email_provider', 'smtp', $tenantId),
                 'smtp_host' => Setting::get('smtp_host', '', $tenantId),

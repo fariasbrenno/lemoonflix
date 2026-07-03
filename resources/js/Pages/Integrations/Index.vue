@@ -3,6 +3,7 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { router, usePage } from '@inertiajs/vue3';
 import LayoutInfoprodutor from '@/Layouts/LayoutInfoprodutor.vue';
 import Button from '@/components/ui/Button.vue';
+import HorizontalScrollTabs from '@/components/ui/HorizontalScrollTabs.vue';
 import AppCard from '@/components/integrations/AppCard.vue';
 import ConversionPixelsAppCard from '@/components/integrations/ConversionPixelsAppCard.vue';
 import SpedySidebar from '@/components/integrations/SpedySidebar.vue';
@@ -330,10 +331,7 @@ watch(() => page.url, () => syncGatewayFromQuery());
 
 <template>
     <div class="space-y-6">
-        <nav
-            class="inline-flex flex-wrap gap-1 rounded-xl bg-zinc-100/80 p-1 dark:bg-zinc-800/80"
-            aria-label="Abas de integrações"
-        >
+        <HorizontalScrollTabs aria-label="Abas de integrações">
             <button
                 v-for="tab in TABS"
                 :key="tab.id"
@@ -349,7 +347,7 @@ watch(() => page.url, () => syncGatewayFromQuery());
                 <component :is="tab.icon" class="h-4 w-4 shrink-0" aria-hidden="true" />
                 {{ tab.label }}
             </button>
-        </nav>
+        </HorizontalScrollTabs>
 
         <!-- Aba Apps -->
         <template v-if="currentTab === 'apps'">

@@ -1,8 +1,9 @@
 <script setup>
 import { ref, computed } from 'vue';
-import { useForm, usePage } from '@inertiajs/vue3';
+import { useForm, usePage, router } from '@inertiajs/vue3';
 import LayoutInfoprodutor from '@/Layouts/LayoutInfoprodutor.vue';
 import Button from '@/components/ui/Button.vue';
+import HorizontalScrollTabs from '@/components/ui/HorizontalScrollTabs.vue';
 import {
     Mail,
     Languages,
@@ -15,6 +16,8 @@ import {
     Upload,
     Download,
     Palette,
+    Bell,
+    CheckCircle2,
 } from 'lucide-vue-next';
 import IntegrationCard from '@/components/IntegrationCard.vue';
 import EmailProviderSidebar from '@/components/EmailProviderSidebar.vue';
@@ -74,6 +77,16 @@ const props = defineProps({
         type: String,
         default: null,
     },
+    push_vapid: {
+        type: Object,
+        default: () => ({
+            configured: false,
+            public_key: null,
+            env_writable: false,
+            env_exists: false,
+            shared_file_exists: false,
+        }),
+    },
     settings_plugin_tabs: {
         type: Array,
         default: () => [],
@@ -81,7 +94,7 @@ const props = defineProps({
 });
 
 function allAllowedTabIds() {
-    const core = ['email', 'storage', 'traducoes', 'moedas', 'cron', 'update'];
+    const core = ['email', 'storage', 'traducoes', 'moedas', 'push', 'cron', 'update'];
     const extra = (props.settings_plugin_tabs || []).map((t) => t.id).filter(Boolean);
     return [...core, ...extra];
 }
@@ -173,6 +186,7 @@ const coreTabsStatic = [
     { id: 'storage', label: 'Storage', icon: HardDrive },
     { id: 'traducoes', label: 'Traduções', icon: Languages },
     { id: 'moedas', label: 'Moedas', icon: Banknote },
+    { id: 'push', label: 'Notificações push', icon: Bell },
     { id: 'cron', label: 'Cron', icon: Clock },
     { id: 'update', label: 'Update', icon: Download },
 ];
@@ -194,6 +208,37 @@ const integrityLoading = ref(false);
 const integrityResult = ref(null);
 const migrateLoading = ref(false);
 const migrateResult = ref(null);
+
+const pushVapidConfigured = computed(() => !!props.push_vapid?.configured);
+const pushVapidGenerating = ref(false);
+const pushVapidResult = ref(null);
+
+async function generatePushVapid(force = false) {
+    if (force) {
+        const ok = window.confirm(
+            'Regenerar as chaves VAPID invalida as inscrições push atuais. Cada usuário precisará reativar notificações no painel. Continuar?',
+        );
+        if (!ok) return;
+    }
+
+    pushVapidGenerating.value = true;
+    pushVapidResult.value = null;
+    try {
+        const res = await window.axios.post('/configuracoes/push/vapid/generate', { force });
+        pushVapidResult.value = {
+            status: 'success',
+            message: res.data?.message || 'Chaves VAPID configuradas.',
+        };
+        router.reload();
+    } catch (e) {
+        pushVapidResult.value = {
+            status: 'error',
+            message: e?.response?.data?.message || e?.message || 'Falha ao gerar chaves VAPID.',
+        };
+    } finally {
+        pushVapidGenerating.value = false;
+    }
+}
 
 async function checkForUpdate() {
     updateCheckLoading.value = true;
@@ -742,11 +787,7 @@ const selectClass =
         </div>
 
         <!-- Tabs pill style -->
-        <div class="w-full overflow-x-auto [-webkit-overflow-scrolling:touch]">
-            <nav
-                class="inline-flex w-max rounded-xl bg-zinc-100/80 p-1 dark:bg-zinc-800/80"
-                aria-label="Abas de configurações"
-            >
+        <HorizontalScrollTabs aria-label="Abas de configurações">
                 <button
                     v-for="tab in tabs"
                     :key="tab.id"
@@ -764,11 +805,10 @@ const selectClass =
                     <component :is="tab.icon" class="h-4 w-4 shrink-0" aria-hidden="true" />
                     {{ tab.label }}
                 </button>
-            </nav>
-        </div>
+        </HorizontalScrollTabs>
 
         <form
-            v-show="activeTab !== 'update' && activeTab !== 'cron' && !isPluginTab(activeTab)"
+            v-show="activeTab !== 'update' && activeTab !== 'cron' && activeTab !== 'push' && !isPluginTab(activeTab)"
             class="w-full max-w-full space-y-6"
             @submit.prevent="form.put('/configuracoes', { preserveScroll: true, onSuccess: (page) => syncStorageFormFromSettings(page.props.settings) })"
         >
@@ -1336,6 +1376,125 @@ const selectClass =
                                     <pre class="mt-2 overflow-x-auto rounded-lg bg-zinc-100 p-4 text-left font-mono text-sm text-zinc-800 dark:bg-zinc-950/60 dark:text-zinc-200">{{ cronCurlLine }}</pre>
                                 </template>
                             </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </Transition>
+
+        <!-- Aba Notificações push (fora do form) -->
+        <Transition
+            enter-active-class="transition duration-200 ease-out"
+            enter-from-class="opacity-0"
+            enter-to-class="opacity-100"
+            leave-active-class="transition duration-150 ease-in"
+            leave-from-class="opacity-100"
+            leave-to-class="opacity-0"
+        >
+            <div v-show="activeTab === 'push'" class="w-full max-w-full space-y-6">
+                <section class="panel-table">
+                    <div class="border-b border-zinc-200 bg-zinc-50 px-6 py-5 dark:border-zinc-700 dark:bg-zinc-800">
+                        <h2 class="text-base font-semibold text-zinc-900 dark:text-white">Notificações push do painel</h2>
+                        <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+                            Chaves VAPID necessárias para enviar notificações push (vendas aprovadas, PIX, boleto) aos usuários do painel.
+                            Ao gerar aqui, as chaves são salvas automaticamente no <code class="rounded bg-zinc-200 px-1 dark:bg-zinc-700">.env</code>
+                            (<code class="rounded bg-zinc-200 px-1 dark:bg-zinc-700">PWA_VAPID_PUBLIC</code> e
+                            <code class="rounded bg-zinc-200 px-1 dark:bg-zinc-700">PWA_VAPID_PRIVATE</code>) — não é preciso copiar nem colar manualmente.
+                        </p>
+                    </div>
+                    <div class="space-y-6 p-6">
+                        <div
+                            class="rounded-xl border p-4"
+                            :class="pushVapidConfigured
+                                ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-800/50 dark:bg-emerald-950/30'
+                                : 'border-amber-200 bg-amber-50 dark:border-amber-800/50 dark:bg-amber-950/30'"
+                        >
+                            <div class="flex items-start gap-3">
+                                <CheckCircle2
+                                    v-if="pushVapidConfigured"
+                                    class="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400"
+                                />
+                                <AlertCircle
+                                    v-else
+                                    class="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400"
+                                />
+                                <div>
+                                    <p
+                                        class="text-sm font-medium"
+                                        :class="pushVapidConfigured ? 'text-emerald-900 dark:text-emerald-100' : 'text-amber-900 dark:text-amber-100'"
+                                    >
+                                        {{ pushVapidConfigured ? 'Chaves VAPID configuradas' : 'Chaves VAPID ausentes ou inválidas' }}
+                                    </p>
+                                    <p
+                                        class="mt-1 text-sm"
+                                        :class="pushVapidConfigured ? 'text-emerald-800 dark:text-emerald-200' : 'text-amber-800 dark:text-amber-200'"
+                                    >
+                                        <template v-if="pushVapidConfigured">
+                                            As chaves estão no <code class="rounded bg-emerald-100 px-1 dark:bg-emerald-900/40">.env</code> e o painel já pode registrar inscrições push. Peça aos usuários que ativem notificações no centro de notificações.
+                                        </template>
+                                        <template v-else>
+                                            Sem chaves válidas, o botão de ativar notificações não aparece e nenhum push é enviado.
+                                        </template>
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div
+                            v-if="!push_vapid.env_writable && push_vapid.env_exists"
+                            class="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-950/30"
+                        >
+                            <AlertCircle class="h-5 w-5 shrink-0 text-red-600 dark:text-red-400" />
+                            <div class="text-sm text-red-800 dark:text-red-200">
+                                <p class="font-medium">Sem permissão para gravar o .env</p>
+                                <p class="mt-1">
+                                    Gere as chaves via SSH com
+                                    <code class="rounded bg-red-100 px-1 dark:bg-red-900/40">php artisan pwa:vapid</code>
+                                    ou ajuste as permissões do arquivo.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div
+                            v-if="docker_mode"
+                            class="rounded-xl border border-violet-200 bg-violet-50 p-4 dark:border-violet-800/50 dark:bg-violet-950/30"
+                        >
+                            <p class="text-sm font-medium text-violet-900 dark:text-violet-100">Ambiente Docker</p>
+                            <p class="mt-1 text-sm text-violet-800 dark:text-violet-200">
+                                As chaves são sincronizadas com o worker de filas automaticamente. Ao regenerar, o queue worker será reiniciado.
+                            </p>
+                        </div>
+
+                        <div
+                            v-if="pushVapidResult"
+                            class="rounded-xl border p-4 text-sm"
+                            :class="pushVapidResult.status === 'success'
+                                ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800/50 dark:bg-emerald-950/30 dark:text-emerald-200'
+                                : 'border-red-200 bg-red-50 text-red-800 dark:border-red-800/50 dark:bg-red-950/30 dark:text-red-200'"
+                        >
+                            {{ pushVapidResult.message }}
+                        </div>
+
+                        <div class="flex flex-wrap gap-3">
+                            <Button
+                                v-if="!pushVapidConfigured"
+                                type="button"
+                                :disabled="pushVapidGenerating || !push_vapid.env_writable"
+                                @click="generatePushVapid(false)"
+                            >
+                                <RefreshCw class="h-4 w-4" :class="{ 'animate-spin': pushVapidGenerating }" />
+                                {{ pushVapidGenerating ? 'Gerando...' : 'Gerar chaves VAPID' }}
+                            </Button>
+                            <button
+                                v-else
+                                type="button"
+                                :disabled="pushVapidGenerating || !push_vapid.env_writable"
+                                class="inline-flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 transition hover:border-amber-400 hover:text-amber-700 disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"
+                                @click="generatePushVapid(true)"
+                            >
+                                <RefreshCw class="h-4 w-4" :class="{ 'animate-spin': pushVapidGenerating }" />
+                                {{ pushVapidGenerating ? 'Regenerando...' : 'Regenerar chaves' }}
+                            </button>
                         </div>
                     </div>
                 </section>

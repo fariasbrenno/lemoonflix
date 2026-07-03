@@ -552,6 +552,9 @@ Route::middleware(['auth', 'admin.tenant', 'role:admin|infoprodutor|team', 'audi
         Route::post('/configuracoes/email/send-test', [\App\Http\Controllers\EmailTestController::class, 'sendTest'])->name('settings.email.send-test');
         Route::post('/configuracoes/storage/test', [\App\Http\Controllers\StorageTestController::class, '__invoke'])->name('settings.storage.test');
         Route::post('/configuracoes/storage/migrate', [\App\Http\Controllers\StorageMigrateController::class, '__invoke'])->name('settings.storage.migrate');
+        Route::post('/configuracoes/push/vapid/generate', [\App\Http\Controllers\PushVapidSettingsController::class, 'generate'])
+            ->name('settings.push.vapid.generate')
+            ->middleware('throttle:5,1');
         Route::get('/configuracoes/update/check', [\App\Http\Controllers\UpdateController::class, 'check'])->name('settings.update.check');
         Route::get('/configuracoes/update/integrity', [\App\Http\Controllers\UpdateController::class, 'integrity'])->name('settings.update.integrity');
         Route::post('/configuracoes/update/migrate', [\App\Http\Controllers\UpdateController::class, 'migrateNow'])->name('settings.update.migrate')->middleware('throttle:10,1');

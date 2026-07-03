@@ -36,7 +36,7 @@ use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Inertia\Inertia;
 use Inertia\Response;
-use Minishlink\WebPush\VAPID;
+use App\Support\VapidKeyGenerator;
 use Minishlink\WebPush\WebPush;
 use Minishlink\WebPush\Subscription;
 
@@ -418,21 +418,14 @@ class MemberBuilderController extends Controller
         if (! empty($pwa['push_enabled'])) {
             if (empty($pwa['vapid_public'] ?? null) || empty($pwa['vapid_private'] ?? null)) {
                 try {
-                    $keys = VAPID::createVapidKeys();
+                    $keys = VapidKeyGenerator::createPair();
                     $config['pwa']['vapid_public'] = $keys['publicKey'];
                     $config['pwa']['vapid_private'] = $keys['privateKey'];
-                } catch (\Throwable $e) {
-                    // Fallback: no Windows/XAMPP o openssl_pkey_new pode falhar por falta de openssl.cnf; gerar via CLI
-                    $keys = $this->createVapidKeysViaOpensslCli();
-                    if ($keys !== null) {
-                        $config['pwa']['vapid_public'] = $keys['publicKey'];
-                        $config['pwa']['vapid_private'] = $keys['privateKey'];
-                    } else {
-                        $existing = $produto->member_area_config['pwa'] ?? [];
-                        $config['pwa']['vapid_public'] = $config['pwa']['vapid_public'] ?? $existing['vapid_public'] ?? null;
-                        $config['pwa']['vapid_private'] = $existing['vapid_private'] ?? null;
-                        $vapidWarning = 'Configuração salva, mas não foi possível gerar chaves para notificações push. Verifique se a extensão OpenSSL do PHP está habilitada e suporta chaves EC (P-256), ou se o binário openssl está no PATH.';
-                    }
+                } catch (\Throwable) {
+                    $existing = $produto->member_area_config['pwa'] ?? [];
+                    $config['pwa']['vapid_public'] = $config['pwa']['vapid_public'] ?? $existing['vapid_public'] ?? null;
+                    $config['pwa']['vapid_private'] = $existing['vapid_private'] ?? null;
+                    $vapidWarning = 'Configuração salva, mas não foi possível gerar chaves para notificações push. Verifique se a extensão OpenSSL do PHP está habilitada e suporta chaves EC (P-256), ou se o binário openssl está no PATH.';
                 }
             } else {
                 $config['pwa']['vapid_private'] = $produto->member_area_config['pwa']['vapid_private'] ?? $config['pwa']['vapid_private'];
@@ -1813,62 +1806,6 @@ class MemberBuilderController extends Controller
             return $base !== '' ? $slug . '.' . $base : (string) $domain->value;
         }
         return (string) ($domain->value ?? '');
-    }
-
-    /**
-     * Gera chaves VAPID via binário openssl (CLI). Útil quando openssl_pkey_new falha no PHP (ex.: Windows sem openssl.cnf).
-     *
-     * @return array{publicKey: string, privateKey: string}|null
-     */
-    private function createVapidKeysViaOpensslCli(): ?array
-    {
-        $tmp = tempnam(sys_get_temp_dir(), 'vapid_');
-        if ($tmp === false) {
-            return null;
-        }
-        $pemFile = $tmp . '.pem';
-        if (! @rename($tmp, $pemFile)) {
-            @unlink($tmp);
-            return null;
-        }
-        $null = PHP_OS_FAMILY === 'Windows' ? 'NUL' : '/dev/null';
-        $cmd = 'openssl ecparam -name prime256v1 -genkey -noout -out ' . escapeshellarg($pemFile) . ' 2>' . $null;
-        exec($cmd, $out, $code);
-        if ($code !== 0 || ! is_readable($pemFile)) {
-            // No Windows, tentar openssl do XAMPP se não estiver no PATH
-            if (PHP_OS_FAMILY === 'Windows' && is_file('C:\\xampp\\apache\\bin\\openssl.exe')) {
-                $cmd = 'C:\\xampp\\apache\\bin\\openssl.exe ecparam -name prime256v1 -genkey -noout -out ' . escapeshellarg($pemFile) . ' 2>' . $null;
-                exec($cmd, $out2, $code);
-            }
-            if ($code !== 0 || ! is_readable($pemFile)) {
-                @unlink($pemFile);
-                return null;
-            }
-        }
-        $pem = file_get_contents($pemFile);
-        @unlink($pemFile);
-        if ($pem === false || $pem === '') {
-            return null;
-        }
-        try {
-            $jwkArray = \Jose\Component\KeyManagement\KeyConverter\ECKey::createFromPEM($pem)->toArray();
-            $jwk = new \Jose\Component\Core\JWK($jwkArray);
-            $binaryPublicKey = hex2bin(\Minishlink\WebPush\Utils::serializePublicKeyFromJWK($jwk));
-            if (! $binaryPublicKey || strlen($binaryPublicKey) !== 65) {
-                return null;
-            }
-            $d = \Base64Url\Base64Url::decode($jwk->get('d'));
-            $binaryPrivateKey = str_pad($d, 32, "\0", STR_PAD_LEFT);
-            if (strlen($binaryPrivateKey) !== 32) {
-                return null;
-            }
-            return [
-                'publicKey' => \Base64Url\Base64Url::encode($binaryPublicKey),
-                'privateKey' => \Base64Url\Base64Url::encode($binaryPrivateKey),
-            ];
-        } catch (\Throwable) {
-            return null;
-        }
     }
 
     private function duplicateMemberTitle(string $title): string

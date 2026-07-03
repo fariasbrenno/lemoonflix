@@ -5,6 +5,7 @@ import { Copy, Check, ExternalLink } from 'lucide-vue-next';
 import LayoutInfoprodutor from '@/Layouts/LayoutInfoprodutor.vue';
 import Button from '@/components/ui/Button.vue';
 import ConversionPixelsForm from '@/components/produtos/ConversionPixelsForm.vue';
+import HorizontalScrollTabs from '@/components/ui/HorizontalScrollTabs.vue';
 import { mergeConversionPixels } from '@/lib/conversionPixels';
 
 defineOptions({ layout: LayoutInfoprodutor });
@@ -106,7 +107,11 @@ function isPendingAffiliate() {
             Sua afiliação está aguardando aprovação do produtor. Após aprovar, você poderá copiar links e configurar pixels.
         </div>
 
-        <nav class="flex gap-1 overflow-x-auto border-b border-zinc-200 dark:border-zinc-700">
+        <HorizontalScrollTabs
+            aria-label="Abas do produto"
+            nav-class="gap-1 border-b border-zinc-200 dark:border-zinc-700"
+            :bleed="false"
+        >
             <button
                 v-for="t in tabs"
                 :key="t.id"
@@ -121,7 +126,7 @@ function isPendingAffiliate() {
             >
                 {{ t.label }}
             </button>
-        </nav>
+        </HorizontalScrollTabs>
 
         <!-- Visão geral -->
         <div v-show="activeTab === 'overview'" class="panel-card-lg overflow-hidden">

@@ -130,6 +130,28 @@
     }
 }
 
+/* Abas horizontais com rolagem no mobile (flex min-width + overflow chain) */
+@layer components {
+    .horizontal-scroll-tabs {
+        @apply w-full max-w-full min-w-0 overflow-x-auto overflow-y-hidden overscroll-x-contain no-scrollbar;
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-x;
+    }
+
+    .horizontal-scroll-tabs--bleed {
+        @apply -mx-4 px-4 sm:mx-0 sm:px-0;
+    }
+
+    .horizontal-scroll-tabs__nav {
+        @apply inline-flex w-max max-w-none flex-nowrap items-center;
+    }
+
+    .horizontal-scroll-tabs__nav > a,
+    .horizontal-scroll-tabs__nav > button {
+        @apply shrink-0 whitespace-nowrap;
+    }
+}
+
 /* Scrollbar moderna (thin, arredondada) */
 @layer base {
     * {

@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import { CircleDollarSign, Repeat } from 'lucide-vue-next';
+import HorizontalScrollTabs from '@/components/ui/HorizontalScrollTabs.vue';
 
 const page = usePage();
 const isVendas = computed(() => {
@@ -12,10 +13,7 @@ const isAssinaturas = computed(() => page.url.startsWith('/vendas/assinaturas'))
 </script>
 
 <template>
-    <nav
-        class="inline-flex rounded-xl bg-zinc-100/80 p-1 dark:bg-zinc-800/80"
-        aria-label="Abas de vendas"
-    >
+    <HorizontalScrollTabs aria-label="Abas de vendas">
         <Link
             href="/vendas"
             :class="[
@@ -40,5 +38,5 @@ const isAssinaturas = computed(() => page.url.startsWith('/vendas/assinaturas'))
             <Repeat class="h-4 w-4 shrink-0" aria-hidden="true" />
             Assinaturas
         </Link>
-    </nav>
+    </HorizontalScrollTabs>
 </template>

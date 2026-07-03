@@ -3,6 +3,7 @@ import { computed, ref } from 'vue';
 import { Link, router, useForm, usePage } from '@inertiajs/vue3';
 import LayoutInfoprodutor from '@/Layouts/LayoutInfoprodutor.vue';
 import Button from '@/components/ui/Button.vue';
+import HorizontalScrollTabs from '@/components/ui/HorizontalScrollTabs.vue';
 import { Users, Shield, UserPlus, Plus, Pencil, Trash2, X, ScrollText, Trash } from 'lucide-vue-next';
 import PluginRenderZone from '@/components/plugins/PluginRenderZone.vue';
 
@@ -256,11 +257,8 @@ function confirmClearLogs() {
         <PluginRenderZone zone="equipe.index.after_header" />
 
         <!-- Abas Usuários (principal) + Abas Equipe (secundária) -->
-        <div class="flex flex-col gap-3">
-            <nav
-                class="inline-flex rounded-xl bg-zinc-100/80 p-1 dark:bg-zinc-800/80"
-                aria-label="Abas de usuários"
-            >
+        <div class="flex min-w-0 flex-col gap-3">
+            <HorizontalScrollTabs aria-label="Abas de usuários">
                 <Link
                     v-for="t in userTabs"
                     :key="t.key"
@@ -278,12 +276,9 @@ function confirmClearLogs() {
                     <Users v-else class="h-4 w-4 shrink-0" aria-hidden="true" />
                     {{ t.label }}
                 </Link>
-            </nav>
+            </HorizontalScrollTabs>
 
-            <nav
-                class="inline-flex rounded-xl bg-zinc-100/80 p-1 dark:bg-zinc-800/80"
-                aria-label="Abas de equipe"
-            >
+            <HorizontalScrollTabs aria-label="Abas de equipe">
                 <button
                     v-for="t in tabs"
                     :key="t.key"
@@ -302,7 +297,7 @@ function confirmClearLogs() {
                     <ScrollText v-else class="h-4 w-4 shrink-0" aria-hidden="true" />
                     {{ t.label }}
                 </button>
-            </nav>
+            </HorizontalScrollTabs>
         </div>
 
         <!-- Cargos -->

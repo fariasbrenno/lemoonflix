@@ -3,6 +3,7 @@ import { ref, computed } from 'vue';
 import { router } from '@inertiajs/vue3';
 import LayoutInfoprodutor from '@/Layouts/LayoutInfoprodutor.vue';
 import { useInertiaPagination } from '@/composables/useInertiaPagination';
+import HorizontalScrollTabs from '@/components/ui/HorizontalScrollTabs.vue';
 import {
     Eye,
     EyeOff,
@@ -193,7 +194,7 @@ function commissionStatusLabel(status) {
             </div>
         </div>
 
-        <nav class="inline-flex rounded-xl bg-zinc-100/80 p-1 dark:bg-zinc-800/80" aria-label="Filtrar vendas">
+        <HorizontalScrollTabs aria-label="Filtrar vendas">
             <button
                 v-for="opt in filterOptions"
                 :key="opt.value"
@@ -208,7 +209,7 @@ function commissionStatusLabel(status) {
             >
                 {{ opt.label }}
             </button>
-        </nav>
+        </HorizontalScrollTabs>
 
         <div class="flex flex-wrap items-end gap-3">
             <div class="relative min-w-[200px] flex-1 max-w-xl">
