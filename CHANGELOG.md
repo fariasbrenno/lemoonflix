@@ -1,10 +1,23 @@
 # Changelog
 
+## [2.0.4] - 03-07-2026
+
+### Novidades
+
+- **Integração IntegraX (SMS)**: conexão por token em Integrações, aba **SMS** no produto com envio de acesso pós-compra, PIX gerado e recuperação de carrinho.
+- **Notificações push**: opção de **gerar chaves VAPID** em Configurações → Notificações push (gravação automática no `.env`).
+- **Checkout em páginas externas**: checkout passa a carregar via **iframe**, configurável no **Checkout Builder**.
+
+### Correções
+
+- **Vendas (`/vendas`)**: corrigida a **paginação** da listagem.
+- **Abas no painel**: corrigido o **scroll horizontal** de abas dentro das páginas (integrações, edição de produto, etc.).
+- **Notificações push (VAPID)**: corrigida falha ao gerar chaves em ambientes **Windows/Laragon** (`Unable to create the key`).
+
 ## [2.0.3] - 15-06-2026
 
 ### Novidades
 
-- **Integração IntegraX (SMS)**: conexão por token em Integrações, aba **SMS** no produto com envio de acesso pós-compra, PIX gerado e recuperação de carrinho (etapas configuráveis, limite de 160 caracteres).
 - **PIX Parcelado (CajuPay)**: novo método de pagamento com checkout embed via SDK, adesão no gateway, regras por produto (parcelas, entrada fixa ou percentual), webhooks de parcelas e tela de PIX da entrada.
 
 ### Melhorias
