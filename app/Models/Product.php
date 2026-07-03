@@ -121,6 +121,10 @@ class Product extends Model
             'youtube_url' => null,
             'redirect_after_purchase' => '',
             'back_redirect' => ['enabled' => false, 'url' => ''],
+            'embed' => [
+                'enabled' => false,
+                'allowed_origins' => [],
+            ],
             'customer_fields' => [
                 'name' => true,
                 'cpf' => true,

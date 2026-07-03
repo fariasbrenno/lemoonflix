@@ -12,14 +12,24 @@ class SecurityHeaders
     {
         $response = $next($request);
 
+        $embed = $request->attributes->get('checkout_embed');
+        $allowCheckoutEmbed = is_array($embed) && ! empty($embed['allow_framing']);
+
         $response->headers->set('X-Content-Type-Options', 'nosniff');
-        $response->headers->set('X-Frame-Options', 'SAMEORIGIN');
+        if (! $allowCheckoutEmbed) {
+            $response->headers->set('X-Frame-Options', 'SAMEORIGIN');
+        } else {
+            $response->headers->remove('X-Frame-Options');
+        }
         $response->headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
         $response->headers->set('X-XSS-Protection', '1; mode=block');
 
         // CSP só em produção — no local o Vite usa localhost:5173 e seria bloqueado
         if (config('app.env') === 'production') {
-            $response->headers->set('Content-Security-Policy', $this->buildContentSecurityPolicy());
+            $frameAncestors = $allowCheckoutEmbed
+                ? (string) ($embed['frame_ancestors'] ?? '*')
+                : "'self'";
+            $response->headers->set('Content-Security-Policy', $this->buildContentSecurityPolicy($frameAncestors));
         }
 
         if (config('app.env') === 'production' && $request->secure()) {
@@ -29,7 +39,7 @@ class SecurityHeaders
         return $response;
     }
 
-    private function buildContentSecurityPolicy(): string
+    private function buildContentSecurityPolicy(string $frameAncestors = "'self'"): string
     {
         $connectSrc = $this->mergeDirectiveSources(
             config('csp.connect_src', []),
@@ -41,6 +51,7 @@ class SecurityHeaders
 
         $directives = [
             "default-src 'self'",
+            'frame-ancestors '.$frameAncestors,
             'script-src '.$this->mergeDirectiveSources(
                 config('csp.script_src', []),
                 $this->parseCsvOrigins((string) config('csp.extra_script_src', ''))

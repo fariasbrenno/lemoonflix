@@ -37,6 +37,7 @@ class ContentSecurityPolicyTest extends TestCase
 
         $csp = (string) $response->headers->get('Content-Security-Policy');
         $this->assertNotSame('', $csp);
+        $this->assertStringContainsString("frame-ancestors 'self'", $csp);
         $this->assertStringContainsString('https://cdn.cajupay.com.br', $csp);
         $this->assertStringContainsString('https://api.cajupay.com.br', $csp);
         $this->assertStringContainsString('https://www.google-analytics.com', $csp);

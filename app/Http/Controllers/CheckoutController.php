@@ -39,6 +39,7 @@ use App\Support\CheckoutConfigNormalizer;
 use App\Support\CheckoutCurrencyCatalog;
 use App\Support\CheckoutCurrencyMode;
 use App\Support\CheckoutCustomPriceByCurrency;
+use App\Support\CheckoutEmbed;
 use App\Support\OrderReportingAmounts;
 use App\Support\CheckoutPaymentMethodsBuilder;
 use App\Support\CheckoutPaymentMethodOrder;
@@ -491,6 +492,20 @@ class CheckoutController extends Controller
 
         /** Preview ao vivo no Builder (iframe): o front confia neste flag, não só na query (Inertia pode alterar URL). */
         $payload['checkout_builder_preview'] = $request->query('preview') === '1';
+
+        if (CheckoutEmbed::isEnabledInConfig($config)) {
+            session([
+                CheckoutEmbed::SESSION_ACTIVE_KEY => true,
+                CheckoutEmbed::SESSION_FRAME_ANCESTORS_KEY => CheckoutEmbed::frameAncestorsFromConfig($config),
+            ]);
+            $payload['checkout_embed_enabled'] = true;
+        } else {
+            session()->forget([
+                CheckoutEmbed::SESSION_ACTIVE_KEY,
+                CheckoutEmbed::SESSION_FRAME_ANCESTORS_KEY,
+            ]);
+            $payload['checkout_embed_enabled'] = false;
+        }
 
         $checkoutEventData = new \ArrayObject([
             'product' => $payload['product'] ?? [],
