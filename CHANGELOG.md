@@ -4,6 +4,7 @@
 
 ### Novidades
 
+- **Integração IntegraX (SMS)**: conexão por token em Integrações, aba **SMS** no produto com envio de acesso pós-compra, PIX gerado e recuperação de carrinho (etapas configuráveis, limite de 160 caracteres).
 - **PIX Parcelado (CajuPay)**: novo método de pagamento com checkout embed via SDK, adesão no gateway, regras por produto (parcelas, entrada fixa ou percentual), webhooks de parcelas e tela de PIX da entrada.
 
 ### Melhorias

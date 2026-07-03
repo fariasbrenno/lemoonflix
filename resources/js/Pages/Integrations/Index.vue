@@ -11,6 +11,7 @@ import UtmifySidebar from '@/components/integrations/UtmifySidebar.vue';
 import WebhookSidebar from '@/components/integrations/WebhookSidebar.vue';
 import ExternalCheckoutSidebar from '@/components/integrations/ExternalCheckoutSidebar.vue';
 import CademiSidebar from '@/components/integrations/CademiSidebar.vue';
+import IntegraXSidebar from '@/components/integrations/IntegraXSidebar.vue';
 import ConversionPixelsSidebar from '@/components/integrations/ConversionPixelsSidebar.vue';
 import GatewayCard from '@/components/settings/GatewayCard.vue';
 import GatewayConfigSidebar from '@/components/settings/GatewayConfigSidebar.vue';
@@ -55,6 +56,12 @@ const APPS_BASE = [
         image: 'images/integrations/cademi.png',
     },
     {
+        id: 'integrax',
+        name: 'IntegraX',
+        description: 'Envio de SMS automático: acesso pós-compra, PIX gerado e recuperação de carrinho. Configure o token e os textos por produto.',
+        image: 'images/integrations/integrax.png',
+    },
+    {
         id: 'conversion_pixels',
         name: 'Pixels e rastreamento',
         description: 'Meta Ads, TikTok, Google Ads, Google Analytics e scripts. Reutilize nos produtos sem cadastrar de novo.',
@@ -81,6 +88,17 @@ const props = defineProps({
     plugin_apps: { type: Array, default: () => [] },
     conversion_pixel_integrations: { type: Array, default: () => [] },
     external_checkout_endpoints: { type: Array, default: () => [] },
+    integrax_connection: {
+        type: Object,
+        default: () => ({
+            configured: false,
+            is_active: false,
+            has_token: false,
+            api_token: '',
+            last_tested_at: null,
+            last_error: null,
+        }),
+    },
 });
 
 import { usePluginComponentResolver } from '@/composables/usePluginComponentResolver';
@@ -138,6 +156,14 @@ const APPS = computed(() =>
                 status: hasActive ? 'active' : undefined,
             };
         }
+        if (app.id === 'integrax') {
+            const conn = props.integrax_connection || {};
+            const hasActive = conn.configured && conn.is_active;
+            return {
+                ...app,
+                status: hasActive ? 'active' : undefined,
+            };
+        }
         return app;
     }),
         ...((props.plugin_apps || []).map((p) => ({
@@ -161,6 +187,7 @@ const spedySidebarOpen = ref(false);
 const cademiSidebarOpen = ref(false);
 const conversionPixelsSidebarOpen = ref(false);
 const externalCheckoutSidebarOpen = ref(false);
+const integraxSidebarOpen = ref(false);
 const pluginSidebarOpen = ref(false);
 const selectedPluginSlot = ref(null);
 const selectedPluginAppName = ref(null);
@@ -213,6 +240,18 @@ function openExternalCheckoutSidebar() {
 
 function closeExternalCheckoutSidebar() {
     externalCheckoutSidebarOpen.value = false;
+}
+
+function openIntegraxSidebar() {
+    integraxSidebarOpen.value = true;
+}
+
+function closeIntegraxSidebar() {
+    integraxSidebarOpen.value = false;
+}
+
+function onIntegraxSaved() {
+    router.reload({ only: ['integrax_connection'] });
 }
 
 function onExternalCheckoutSaved() {
@@ -277,6 +316,8 @@ function onAppClick(app) {
         openCademiSidebar();
     } else if (app.id === 'conversion_pixels') {
         openConversionPixelsSidebar();
+    } else if (app.id === 'integrax') {
+        openIntegraxSidebar();
     } else if (app.plugin) {
         openPluginSidebar(app);
     }
@@ -449,6 +490,12 @@ watch(() => page.url, () => syncGatewayFromQuery());
             :endpoints="external_checkout_endpoints"
             @close="closeExternalCheckoutSidebar"
             @saved="onExternalCheckoutSaved"
+        />
+        <IntegraXSidebar
+            :open="integraxSidebarOpen"
+            :integrax_connection="integrax_connection"
+            @close="closeIntegraxSidebar"
+            @saved="onIntegraxSaved"
         />
         <!-- Plugin sidebars (ex.: AutoZap) -->
         <Teleport to="body">

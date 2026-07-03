@@ -150,6 +150,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->job(new \App\Jobs\SendSubscriptionRemindersJob)->dailyAt('09:00');
         $schedule->command('checkout:fire-abandoned-cart-webhooks')->everyTenMinutes();
         $schedule->command('checkout:send-cart-recovery-emails')->everyMinute();
+        $schedule->command('checkout:send-cart-recovery-sms')->everyMinute();
         $schedule->command('email-campaign:process')->everyMinute();
         $schedule->command('payments:reconcile-pending --limit=200 --days=45')->everyMinute();
         $schedule->command('orders:cancel-stale-pending')->hourly();

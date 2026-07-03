@@ -10,6 +10,7 @@ use App\Models\CademiIntegration;
 use App\Models\ConversionPixelIntegration;
 use App\Services\LegacyConversionPixelsMigrator;
 use App\Models\SpedyIntegration;
+use App\Models\IntegraxConnection;
 use App\Models\UtmifyIntegration;
 use App\Models\ApiApplication;
 use App\Models\Webhook;
@@ -179,6 +180,11 @@ class IntegrationsController extends Controller
         $conversionPixelIntegrations = $this->loadConversionPixelIntegrations($tenantId);
         $externalCheckoutEndpoints = $this->loadExternalCheckoutEndpoints($tenantId);
 
+        $integraxConnection = null;
+        if (Schema::hasTable('integrax_connections')) {
+            $integraxConnection = IntegraxConnection::forTenant($tenantId)->first();
+        }
+
         return Inertia::render('Integrations/Index', [
             'gateways' => $gateways,
             'gateway_order' => $gatewayOrder,
@@ -193,6 +199,7 @@ class IntegrationsController extends Controller
             'plugin_apps' => $pluginApps,
             'conversion_pixel_integrations' => $conversionPixelIntegrations,
             'external_checkout_endpoints' => $externalCheckoutEndpoints,
+            'integrax_connection' => IntegraxController::connectionToArray($integraxConnection),
         ]);
     }
 

@@ -628,6 +628,12 @@ Route::middleware(['auth', 'admin.tenant', 'role:admin|infoprodutor|team', 'audi
         Route::delete('/integracoes/cademi/{cademi}', [\App\Http\Controllers\CademiController::class, 'destroy'])->name('integrations.cademi.destroy');
     Route::get('/integracoes/cademi/{cademi}/tags', [\App\Http\Controllers\CademiController::class, 'tags'])->name('integrations.cademi.tags');
 
+        Route::get('/integracoes/integrax', [\App\Http\Controllers\IntegraxController::class, 'show'])->name('integrations.integrax.show');
+        Route::put('/integracoes/integrax', [\App\Http\Controllers\IntegraxController::class, 'update'])->name('integrations.integrax.update');
+        Route::post('/integracoes/integrax/test', [\App\Http\Controllers\IntegraxController::class, 'test'])
+            ->middleware('throttle:10,1')
+            ->name('integrations.integrax.test');
+
         Route::post('/integracoes/conversion-pixels', [\App\Http\Controllers\ConversionPixelIntegrationController::class, 'store'])->name('integrations.conversion-pixels.store');
         Route::put('/integracoes/conversion-pixels/{conversionPixelIntegration}', [\App\Http\Controllers\ConversionPixelIntegrationController::class, 'update'])->name('integrations.conversion-pixels.update');
         Route::delete('/integracoes/conversion-pixels/{conversionPixelIntegration}', [\App\Http\Controllers\ConversionPixelIntegrationController::class, 'destroy'])->name('integrations.conversion-pixels.destroy');

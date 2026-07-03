@@ -2419,7 +2419,7 @@ class CheckoutController extends Controller
             return redirect()->route('login')->with('error', 'Link inválido ou expirado.');
         }
 
-        $stored = session('pix_display.' . $token);
+        $stored = \App\Support\PixCheckoutDisplay::getDisplayData($token);
         if (! is_array($stored)) {
             return redirect()->route('login')->with('error', 'Código PIX expirado ou inválido. Gere um novo PIX.');
         }
@@ -2427,7 +2427,7 @@ class CheckoutController extends Controller
         $orderId = (int) ($stored['order_id'] ?? 0);
         $order = Order::with('product', 'productOffer', 'subscriptionPlan', 'orderItems')->find($orderId);
         if (! $order || $order->status !== 'pending') {
-            session()->forget('pix_display.' . $token);
+            \App\Support\PixCheckoutDisplay::forgetDisplayData($token);
             $slug = $order ? $order->getCheckoutSlug() : null;
             $redirect = $slug ? redirect()->route('checkout.show', ['slug' => $slug]) : redirect()->route('login');
             return $redirect->with('error', 'Código PIX expirado ou inválido. Gere um novo PIX.');
@@ -2435,7 +2435,7 @@ class CheckoutController extends Controller
 
         $createdAt = (int) ($stored['created_at'] ?? 0);
         if ($createdAt + self::PIX_EXPIRY_SECONDS < time()) {
-            session()->forget('pix_display.' . $token);
+            \App\Support\PixCheckoutDisplay::forgetDisplayData($token);
             return redirect()->route('checkout.show', ['slug' => $order->getCheckoutSlug()])
                 ->with('error', 'Código PIX expirado. Gere um novo PIX.');
         }
@@ -2549,7 +2549,7 @@ class CheckoutController extends Controller
             return response()->json(['status' => 'invalid'], 400);
         }
 
-        $stored = session('pix_display.' . $token);
+        $stored = \App\Support\PixCheckoutDisplay::getDisplayData($token);
         if (! is_array($stored)) {
             $stored = session('boleto_display.' . $token);
         }
@@ -3385,7 +3385,7 @@ class CheckoutController extends Controller
             return redirect()->route('login')->with('error', 'Link inválido ou expirado.');
         }
 
-        $stored = session('pix_display.'.$token);
+        $stored = \App\Support\PixCheckoutDisplay::getDisplayData($token);
         if (! is_array($stored)) {
             return redirect()->route('login')->with('error', 'Código PIX expirado ou inválido. Gere um novo PIX.');
         }
@@ -3393,7 +3393,7 @@ class CheckoutController extends Controller
         $orderId = (int) ($stored['order_id'] ?? 0);
         $order = Order::with('product', 'productOffer', 'subscriptionPlan', 'orderItems')->find($orderId);
         if (! $order || $order->status !== 'pending') {
-            session()->forget('pix_display.'.$token);
+            \App\Support\PixCheckoutDisplay::forgetDisplayData($token);
             $slug = $order ? $order->getCheckoutSlug() : null;
             $redirect = $slug ? redirect()->route('checkout.show', ['slug' => $slug]) : redirect()->route('login');
 
@@ -3402,7 +3402,7 @@ class CheckoutController extends Controller
 
         $createdAt = (int) ($stored['created_at'] ?? 0);
         if ($createdAt + self::PIX_EXPIRY_SECONDS < time()) {
-            session()->forget('pix_display.'.$token);
+            \App\Support\PixCheckoutDisplay::forgetDisplayData($token);
 
             return redirect()->route('checkout.show', ['slug' => $order->getCheckoutSlug()])
                 ->with('error', 'Código PIX expirado. Gere um novo PIX.');

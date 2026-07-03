@@ -321,6 +321,13 @@ class ProdutosController extends Controller
             $defaultsCfg['custom_prices_by_currency'] ?? ['enabled' => false, 'amounts' => []],
             is_array($checkoutConfig['custom_prices_by_currency'] ?? null) ? $checkoutConfig['custom_prices_by_currency'] : []
         );
+        $checkoutConfig['sms'] = array_replace_recursive(
+            Product::defaultSmsConfig(),
+            is_array($checkoutConfig['sms'] ?? null) ? $checkoutConfig['sms'] : []
+        );
+        if (isset($checkoutConfig['sms']['cart_recovery']['stages']) && is_array($checkoutConfig['sms']['cart_recovery']['stages'])) {
+            $checkoutConfig['sms']['cart_recovery']['stages'] = array_values($checkoutConfig['sms']['cart_recovery']['stages']);
+        }
         $produtoArray['checkout_config'] = $checkoutConfig;
 
         $tenantCurrencies = $this->tenantCurrenciesFor($tenantId);
@@ -513,6 +520,11 @@ class ProdutosController extends Controller
             $request->merge(['cart_recovery_email' => is_array($decoded) ? $decoded : null]);
         }
 
+        if ($request->has('sms') && is_string($request->sms)) {
+            $decoded = json_decode($request->sms, true);
+            $request->merge(['sms' => is_array($decoded) ? $decoded : null]);
+        }
+
         $tenantId = auth()->user()->tenant_id;
         $currenciesRaw = Setting::get('currencies', null, $tenantId);
         $tenantCurrenciesList = $currenciesRaw
@@ -661,6 +673,19 @@ class ProdutosController extends Controller
             'cart_recovery_email.stages.24h.subject' => ['nullable', 'string', 'max:255'],
             'cart_recovery_email.stages.24h.body_text' => ['nullable', 'string', 'max:65535'],
             'cart_recovery_email.stages.24h.body_html' => ['nullable', 'string', 'max:65535'],
+            'sms' => ['nullable', 'array'],
+            'sms.access_delivery' => ['nullable', 'array'],
+            'sms.access_delivery.enabled' => ['nullable', 'boolean'],
+            'sms.access_delivery.body_text' => ['nullable', 'string', 'max:160'],
+            'sms.pix_generated' => ['nullable', 'array'],
+            'sms.pix_generated.enabled' => ['nullable', 'boolean'],
+            'sms.pix_generated.body_text' => ['nullable', 'string', 'max:160'],
+            'sms.cart_recovery' => ['nullable', 'array'],
+            'sms.cart_recovery.enabled' => ['nullable', 'boolean'],
+            'sms.cart_recovery.deadline_hours' => ['nullable', 'integer', 'min:1', 'max:168'],
+            'sms.cart_recovery.stages' => ['nullable', 'array'],
+            'sms.cart_recovery.stages.*.delay_minutes' => ['nullable', 'integer', 'min:1', 'max:10080'],
+            'sms.cart_recovery.stages.*.body_text' => ['nullable', 'string', 'max:160'],
             'deliverable_link' => ['nullable', 'string', 'url', 'max:500'],
             'base_interval' => ['nullable', 'string', 'in:weekly,monthly,quarterly,semi_annual,annual,lifetime'],
             'pagarme_billing' => ['nullable', 'array'],
@@ -798,6 +823,8 @@ class ProdutosController extends Controller
         unset($validated['email_template']);
         $cartRecoveryEmail = $validated['cart_recovery_email'] ?? null;
         unset($validated['cart_recovery_email']);
+        $smsConfig = $validated['sms'] ?? null;
+        unset($validated['sms']);
         $deliverableLink = $validated['deliverable_link'] ?? null;
         unset($validated['deliverable_link']);
         $conversionPixels = $validated['conversion_pixels'] ?? null;
@@ -933,6 +960,17 @@ class ProdutosController extends Controller
                 Product::defaultCheckoutConfig()['cart_recovery_email'] ?? [],
                 $cartRecoveryEmail
             );
+            $configUpdated = true;
+        }
+        if (is_array($smsConfig)) {
+            $mergedSms = array_replace_recursive(
+                Product::defaultSmsConfig(),
+                $smsConfig
+            );
+            if (isset($mergedSms['cart_recovery']['stages']) && is_array($mergedSms['cart_recovery']['stages'])) {
+                $mergedSms['cart_recovery']['stages'] = array_values($mergedSms['cart_recovery']['stages']);
+            }
+            $config['sms'] = $mergedSms;
             $configUpdated = true;
         }
         if (is_array($pagarmeBillingInput)) {

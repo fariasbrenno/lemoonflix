@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\Order;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 class PixCheckoutDisplay
@@ -29,7 +30,7 @@ class PixCheckoutDisplay
         $token = Str::random(32);
         $generatedAt = (int) ($context['created_at'] ?? time());
 
-        session()->put('pix_display.'.$token, array_merge([
+        $payload = array_merge([
             'order_id' => $order->id,
             'qrcode' => $pixResult['qrcode'] ?? null,
             'copy_paste' => $pixResult['copy_paste'] ?? null,
@@ -41,15 +42,48 @@ class PixCheckoutDisplay
             'customer_email' => $context['customer_email'] ?? $order->email,
             'customer_phone' => $context['customer_phone'] ?? $order->phone,
             'created_at' => $generatedAt,
-        ], $context));
+        ], $context);
+
+        self::putDisplayData($token, $payload);
 
         return $token;
     }
 
     /**
-     * @param  array<string, mixed>  $pixResult
-     * @param  array<string, mixed>  $context
+     * @param  array<string, mixed>  $data
      */
+    public static function putDisplayData(string $token, array $data): void
+    {
+        session()->put('pix_display.'.$token, $data);
+        Cache::put(self::cacheKey($token), $data, self::EXPIRY_SECONDS);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public static function getDisplayData(string $token): ?array
+    {
+        $stored = session('pix_display.'.$token);
+        if (is_array($stored)) {
+            return $stored;
+        }
+
+        $cached = Cache::get(self::cacheKey($token));
+
+        return is_array($cached) ? $cached : null;
+    }
+
+    public static function forgetDisplayData(string $token): void
+    {
+        session()->forget('pix_display.'.$token);
+        Cache::forget(self::cacheKey($token));
+    }
+
+    private static function cacheKey(string $token): string
+    {
+        return 'pix_display.'.$token;
+    }
+
     public static function persistAndStoreSession(Order $order, array $pixResult, array $context = []): string
     {
         static::persistOnOrder($order, $pixResult);
