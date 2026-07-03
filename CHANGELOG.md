@@ -15,6 +15,7 @@
 - **Notificações push (VAPID)**: corrigida falha ao gerar chaves em ambientes **Windows/Laragon** (`Unable to create the key`).
 - **Docker / `update.sh`**: chaves VAPID geradas ou restauradas automaticamente após atualização quando ausentes no `.env` (sincroniza com `.docker/pwa_vapid.env` no volume compartilhado).
 - **Notificações push (VAPID)**: painel e envio de push passam a ler chaves direto do `.env`/volume (ignoram `config:cache` desatualizado); corrigida leitura quando há linhas `PWA_VAPID_*` duplicadas no `.env`.
+- **Segurança (hospedagem compartilhada)**: corrigida exposição do `.env` e de pastas internas (`vendor/`, `config/`, etc.) quando o document root aponta para a raiz do projeto — bloqueio via `.htaccess` e middleware.
 
 ## [2.0.3] - 15-06-2026
 

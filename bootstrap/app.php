@@ -34,6 +34,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'checkout/cajupay/webhook',
         ]);
 
+        $middleware->prepend(\App\Http\Middleware\BlockSensitivePaths::class);
+
         $middleware->web(prepend: [
             \App\Http\Middleware\ForceHttpsWhenForwardedProto::class,
             \App\Http\Middleware\EnsureDockerSetup::class,

@@ -2,12 +2,28 @@
     AddType application/javascript .mjs
 </IfModule>
 
+# Bloquear dotfiles (exceto .well-known para SSL)
+<IfModule mod_authz_core.c>
+    <FilesMatch "^\.(?!(well-known))">
+        Require all denied
+    </FilesMatch>
+</IfModule>
+<IfModule !mod_authz_core.c>
+    <FilesMatch "^\.(?!(well-known))">
+        Order allow,deny
+        Deny from all
+    </FilesMatch>
+</IfModule>
+
 <IfModule mod_rewrite.c>
     <IfModule mod_negotiation.c>
         Options -MultiViews -Indexes
     </IfModule>
 
     RewriteEngine On
+
+    RewriteRule ^\.env(\..*)?$ - [F,L,NC]
+    RewriteRule ^\.git - [F,L,NC]
 
     # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .
