@@ -13,7 +13,8 @@ class GenerateVapidKeysCommand extends Command
 
     public function handle(VapidKeysManager $manager): int
     {
-        $result = $manager->generate((bool) $this->option('force'));
+        $force = (bool) $this->option('force');
+        $result = $force ? $manager->generate(true) : $manager->ensureConfigured(false);
 
         if (! ($result['success'] ?? false)) {
             $this->error($result['message'] ?? 'Falha ao gerar chaves VAPID.');
@@ -24,6 +25,12 @@ class GenerateVapidKeysCommand extends Command
         if ($result['already_configured'] ?? false) {
             $this->info($result['message']);
             $this->comment('Use --force para regenerar (inscrições push existentes precisarão ser reativadas).');
+
+            return self::SUCCESS;
+        }
+
+        if ($result['restored_from_shared'] ?? false) {
+            $this->info($result['message']);
 
             return self::SUCCESS;
         }

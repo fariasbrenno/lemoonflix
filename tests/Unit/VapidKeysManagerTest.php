@@ -95,6 +95,53 @@ class VapidKeysManagerTest extends TestCase
         $this->assertTrue(VapidEnvKeys::normalizedPairLooksValid($keys['publicKey'], $keys['privateKey']));
     }
 
+    public function test_ensure_configured_restores_from_shared_file_when_env_missing_keys(): void
+    {
+        try {
+            $keys = VapidKeyGenerator::createPair();
+        } catch (\Throwable $e) {
+            $this->markTestSkipped('Geração VAPID indisponível neste ambiente: '.$e->getMessage());
+        }
+
+        file_put_contents(
+            $this->sharedPath,
+            "PWA_VAPID_PUBLIC=\"{$keys['publicKey']}\"\nPWA_VAPID_PRIVATE=\"{$keys['privateKey']}\"\n"
+        );
+
+        $manager = new VapidKeysManager($this->envPath, $this->sharedPath);
+        $result = $manager->ensureConfigured();
+
+        $this->assertTrue($result['success']);
+        $this->assertTrue($result['restored_from_shared'] ?? false);
+
+        $envContent = (string) file_get_contents($this->envPath);
+        $this->assertStringContainsString('PWA_VAPID_PUBLIC=', $envContent);
+        $this->assertStringContainsString('PWA_VAPID_PRIVATE=', $envContent);
+
+        $status = $manager->status();
+        $this->assertTrue($status['configured']);
+    }
+
+    public function test_status_reads_valid_keys_from_shared_file_when_env_empty(): void
+    {
+        try {
+            $keys = VapidKeyGenerator::createPair();
+        } catch (\Throwable $e) {
+            $this->markTestSkipped('Geração VAPID indisponível neste ambiente: '.$e->getMessage());
+        }
+
+        file_put_contents(
+            $this->sharedPath,
+            "PWA_VAPID_PUBLIC=\"{$keys['publicKey']}\"\nPWA_VAPID_PRIVATE=\"{$keys['privateKey']}\"\n"
+        );
+
+        $manager = new VapidKeysManager($this->envPath, $this->sharedPath);
+        $status = $manager->status();
+
+        $this->assertTrue($status['configured']);
+        $this->assertSame(VapidEnvKeys::normalize($keys['publicKey']), $status['public_key']);
+    }
+
     public function test_generate_fails_when_env_not_writable(): void
     {
         if (DIRECTORY_SEPARATOR === '\\') {

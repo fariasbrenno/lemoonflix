@@ -13,6 +13,7 @@
 - **Vendas (`/vendas`)**: corrigida a **paginação** da listagem.
 - **Abas no painel**: corrigido o **scroll horizontal** de abas dentro das páginas (integrações, edição de produto, etc.).
 - **Notificações push (VAPID)**: corrigida falha ao gerar chaves em ambientes **Windows/Laragon** (`Unable to create the key`).
+- **Docker / `update.sh`**: chaves VAPID geradas ou restauradas automaticamente após atualização quando ausentes no `.env` (sincroniza com `.docker/pwa_vapid.env` no volume compartilhado).
 
 ## [2.0.3] - 15-06-2026
 

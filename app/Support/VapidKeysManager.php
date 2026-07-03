@@ -30,6 +30,16 @@ class VapidKeysManager
         $private = $this->readEnvValue($content, 'PWA_VAPID_PRIVATE');
         $configured = VapidEnvKeys::normalizedPairLooksValid($public, $private);
 
+        if (! $configured && is_file($this->resolveSharedVapidPath())) {
+            $shared = (string) file_get_contents($this->resolveSharedVapidPath());
+            $sharedPublic = $this->readEnvValue($shared, 'PWA_VAPID_PUBLIC');
+            $sharedPrivate = $this->readEnvValue($shared, 'PWA_VAPID_PRIVATE');
+            if (VapidEnvKeys::normalizedPairLooksValid($sharedPublic, $sharedPrivate)) {
+                $configured = true;
+                $public = $sharedPublic;
+            }
+        }
+
         return [
             'configured' => $configured,
             'public_key' => $configured ? VapidEnvKeys::normalize($public) : null,
@@ -37,6 +47,56 @@ class VapidKeysManager
             'env_exists' => $envExists,
             'shared_file_exists' => is_file($this->resolveSharedVapidPath()),
         ];
+    }
+
+    /**
+     * Garante par VAPID válido: usa .env, restaura do volume Docker ou gera novo par.
+     *
+     * @return array{
+     *     success: bool,
+     *     configured?: bool,
+     *     already_configured?: bool,
+     *     restored_from_shared?: bool,
+     *     public_key?: string|null,
+     *     message: string,
+     *     error?: string
+     * }
+     */
+    public function ensureConfigured(bool $force = false): array
+    {
+        if ($force) {
+            return $this->generate(true);
+        }
+
+        $status = $this->status();
+        if ($status['configured'] && is_file($this->resolveEnvPath())) {
+            $content = (string) file_get_contents($this->resolveEnvPath());
+            $public = $this->readEnvValue($content, 'PWA_VAPID_PUBLIC');
+            $private = $this->readEnvValue($content, 'PWA_VAPID_PRIVATE');
+            if (VapidEnvKeys::normalizedPairLooksValid($public, $private)) {
+                return [
+                    'success' => true,
+                    'already_configured' => true,
+                    'configured' => true,
+                    'public_key' => VapidEnvKeys::normalize($public),
+                    'message' => 'Chaves VAPID já configuradas e válidas.',
+                ];
+            }
+        }
+
+        if ($this->restoreFromSharedEnvIfValid()) {
+            $status = $this->status();
+
+            return [
+                'success' => true,
+                'configured' => true,
+                'restored_from_shared' => true,
+                'public_key' => $status['public_key'],
+                'message' => 'Chaves VAPID restauradas do arquivo compartilhado (.docker/pwa_vapid.env).',
+            ];
+        }
+
+        return $this->generate(false);
     }
 
     /**
@@ -129,6 +189,40 @@ class VapidKeysManager
                 ? 'Chaves VAPID regeneradas e salvas no .env. Usuários com push ativo devem reativar notificações no painel.'
                 : 'Chaves VAPID geradas e salvas automaticamente no .env.',
         ];
+    }
+
+    private function restoreFromSharedEnvIfValid(): bool
+    {
+        $sharedPath = $this->resolveSharedVapidPath();
+        if (! is_file($sharedPath)) {
+            return false;
+        }
+
+        $shared = (string) file_get_contents($sharedPath);
+        $public = $this->readEnvValue($shared, 'PWA_VAPID_PUBLIC');
+        $private = $this->readEnvValue($shared, 'PWA_VAPID_PRIVATE');
+        if (! VapidEnvKeys::normalizedPairLooksValid($public, $private)) {
+            return false;
+        }
+
+        $envPath = $this->resolveEnvPath();
+        if (! is_file($envPath) || ! is_writable($envPath)) {
+            return false;
+        }
+
+        $content = (string) file_get_contents($envPath);
+        $written = $this->writeKeysToEnv(
+            $content,
+            VapidEnvKeys::normalize($public) ?? $public,
+            VapidEnvKeys::normalize($private) ?? $private
+        );
+        if (! $written) {
+            return false;
+        }
+
+        $this->refreshRuntimeConfig();
+
+        return true;
     }
 
     private function writeKeysToEnv(string $content, string $publicKey, string $privateKey): bool
