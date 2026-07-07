@@ -647,6 +647,15 @@ Route::middleware(['auth', 'admin.tenant', 'role:admin|infoprodutor|team', 'audi
         Route::post('/integracoes/webhooks/{webhook}/test', [\App\Http\Controllers\WebhookController::class, 'test'])->name('integrations.webhooks.test');
         Route::get('/integracoes/webhooks/{webhook}/logs', [\App\Http\Controllers\WebhookController::class, 'logs'])->name('integrations.webhooks.logs');
         Route::get('/integracoes/webhooks/{webhook}/logs/{log}', [\App\Http\Controllers\WebhookController::class, 'showLog'])->name('integrations.webhooks.logs.show');
+
+        Route::get('/integracoes/pixel-x', [\App\Http\Controllers\PixelXIntegrationController::class, 'index'])->name('integrations.pixel-x.index');
+        Route::post('/integracoes/pixel-x', [\App\Http\Controllers\PixelXIntegrationController::class, 'store'])->name('integrations.pixel-x.store');
+        Route::put('/integracoes/pixel-x/{pixelX}', [\App\Http\Controllers\PixelXIntegrationController::class, 'update'])->name('integrations.pixel-x.update');
+        Route::delete('/integracoes/pixel-x/{pixelX}', [\App\Http\Controllers\PixelXIntegrationController::class, 'destroy'])->name('integrations.pixel-x.destroy');
+        Route::post('/integracoes/pixel-x/{pixelX}/test', [\App\Http\Controllers\PixelXIntegrationController::class, 'test'])->name('integrations.pixel-x.test');
+        Route::get('/integracoes/pixel-x/{pixelX}/logs', [\App\Http\Controllers\PixelXIntegrationController::class, 'logs'])->name('integrations.pixel-x.logs');
+        Route::get('/integracoes/pixel-x/{pixelX}/logs/{log}', [\App\Http\Controllers\PixelXIntegrationController::class, 'showLog'])->name('integrations.pixel-x.logs.show');
+
         Route::get('/integracoes/checkout-externo/products', [\App\Http\Controllers\Integrations\ExternalCheckoutController::class, 'products'])->name('integrations.checkout-externo.products');
         Route::get('/integracoes/checkout-externo/endpoints', [\App\Http\Controllers\Integrations\ExternalCheckoutController::class, 'index'])->name('integrations.checkout-externo.endpoints.index');
         Route::post('/integracoes/checkout-externo/endpoints', [\App\Http\Controllers\Integrations\ExternalCheckoutController::class, 'store'])

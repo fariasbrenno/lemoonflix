@@ -15,6 +15,7 @@ use App\Models\UtmifyIntegration;
 use App\Models\ApiApplication;
 use App\Models\Webhook;
 use App\Models\InboundWebhookEndpoint;
+use App\Models\PixelXIntegration;
 use App\Http\Controllers\Integrations\ExternalCheckoutController;
 use App\Support\WebhookEventCatalog;
 use App\Plugins\PluginExtensionRegistry;
@@ -174,6 +175,24 @@ class IntegrationsController extends Controller
             ->values()
             ->all();
 
+        $pixelXIntegrations = PixelXIntegration::forTenant($tenantId)
+            ->with('products:id,name')
+            ->orderBy('name')
+            ->get()
+            ->map(fn (PixelXIntegration $i) => [
+                'id' => $i->id,
+                'name' => $i->name,
+                'url' => $i->url,
+                'has_token' => (bool) $i->token,
+                'events' => $i->events ?? [],
+                'is_active' => $i->is_active,
+                'configured' => $i->token !== null && $i->token !== '',
+                'products' => $i->products->map(fn ($p) => ['id' => $p->id, 'name' => $p->name])->values()->all(),
+                'product_ids' => $i->products->pluck('id')->values()->all(),
+            ])
+            ->values()
+            ->all();
+
         $products = Product::forTenant($tenantId)->orderBy('name')->get(['id', 'name']);
         $apiApplications = ApiApplication::forTenant($tenantId)->orderBy('name')->get(['id', 'name']);
 
@@ -194,6 +213,7 @@ class IntegrationsController extends Controller
             'utmify_integrations' => $utmifyIntegrations,
             'spedy_integrations' => $spedyIntegrations,
             'cademi_integrations' => $cademiIntegrations,
+            'pixel_x_integrations' => $pixelXIntegrations,
             'products' => $products,
             'api_applications' => $apiApplications,
             'plugin_apps' => $pluginApps,

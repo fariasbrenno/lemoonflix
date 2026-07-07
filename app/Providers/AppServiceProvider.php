@@ -10,6 +10,7 @@ use App\Listeners\SendPanelPushOnBoletoGenerated;
 use App\Listeners\SendPanelPushOnOrderCompleted;
 use App\Listeners\SendPanelPushOnPixGenerated;
 use App\Listeners\CademiEventSubscriber;
+use App\Listeners\PixelXEventSubscriber;
 use App\Listeners\SpedyEventSubscriber;
 use App\Listeners\UtmifyEventSubscriber;
 use App\Listeners\SendApiApplicationWebhookListener;
@@ -205,6 +206,7 @@ class AppServiceProvider extends ServiceProvider
         Event::subscribe(UtmifyEventSubscriber::class);
         Event::subscribe(SpedyEventSubscriber::class);
         Event::subscribe(CademiEventSubscriber::class);
+        Event::subscribe(PixelXEventSubscriber::class);
 
         VerifyEmail::toMailUsing(function (object $notifiable, string $verificationUrl) {
             [$appName, $logoUrl] = $this->resolveWhiteLabelEmailBranding($notifiable);
