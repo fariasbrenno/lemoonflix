@@ -164,6 +164,29 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute($payoutPerMinute)->by('payout|'.$key);
         });
 
+        $loginPerMinute = max(5, (int) config('auth_security.rate.login_per_minute', 20));
+        $loginLimit = function (Request $request) use ($loginPerMinute) {
+            $email = strtolower(trim((string) $request->input('email', '')));
+            $key = $email !== '' ? sha1($request->ip().'|'.$email) : (string) $request->ip();
+
+            return Limit::perMinute($loginPerMinute)->by($key);
+        };
+        RateLimiter::for('platform-login', $loginLimit);
+        RateLimiter::for('member-login', $loginLimit);
+
+        $magicAccessPerMinute = max(10, (int) config('auth_security.rate.magic_access_per_minute', 60));
+        RateLimiter::for('magic-access', function (Request $request) use ($magicAccessPerMinute) {
+            return Limit::perMinute($magicAccessPerMinute)->by((string) $request->ip());
+        });
+
+        $passwordResetPerMinute = max(3, (int) config('auth_security.rate.password_reset_per_minute', 6));
+        RateLimiter::for('password-reset', function (Request $request) use ($passwordResetPerMinute) {
+            $email = strtolower(trim((string) $request->input('email', '')));
+            $key = $email !== '' ? sha1('pw-reset|'.$request->ip().'|'.$email) : (string) $request->ip();
+
+            return Limit::perMinute($passwordResetPerMinute)->by($key);
+        });
+
         Queue::after(function (): void {
             Cache::put('queue_heartbeat', now()->toIso8601String(), now()->addMinutes(5));
         });
@@ -173,6 +196,8 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(BoletoGenerated::class, SendPanelPushOnBoletoGenerated::class, 100);
         Event::listen(OrderCompleted::class, \App\Listeners\AllocateCommissionsOnOrderCompleted::class);
         Event::listen(OrderCompleted::class, SendAccessEmailOnOrderCompleted::class);
+        Event::listen(OrderCompleted::class, \App\Listeners\SendIntegraXSmsOnAccessDelivery::class);
+        Event::listen(PixGenerated::class, \App\Listeners\SendIntegraXSmsOnPixGenerated::class);
         Event::listen(OrderCompleted::class, SendMetaPurchaseCapiOnOrderCompleted::class);
         Event::listen(OrderCompleted::class, \App\Listeners\InvalidateDashboardCacheOnOrderCompleted::class);
         Event::listen(OrderRefunded::class, RevokeAccessOnOrderRefunded::class);

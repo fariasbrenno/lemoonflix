@@ -116,6 +116,15 @@ class ApiCheckoutController extends Controller
 
         $cardCredentials = CheckoutCardCredentialsPayload::forMethods($tenantId, $checkoutPaymentMethods);
 
+        $cardInstallmentsConfig = ['enabled' => false, 'max' => 1];
+        if ($productModel) {
+            $checkoutConfig = array_replace_recursive(
+                Product::defaultCheckoutConfig(),
+                is_array($productModel->checkout_config) ? $productModel->checkout_config : []
+            );
+            $cardInstallmentsConfig = $checkoutConfig['card_installments'] ?? ['enabled' => false, 'max' => 1];
+        }
+
         $customer = $session->customer ?? [];
         $appLogoUrl = $app->logo
             ? (new StorageService($app->tenant_id))->url($app->logo)
@@ -155,6 +164,8 @@ class ApiCheckoutController extends Controller
             'card_pagarme_public_key' => $cardCredentials['card_pagarme_public_key'],
             'card_pagarme_api_base_url' => $cardCredentials['card_pagarme_api_base_url'],
             'card_gateway_keys' => $cardCredentials['card_gateway_keys'],
+            'card_installments_enabled' => ! empty($cardInstallmentsConfig['enabled']),
+            'card_max_installments' => min(12, max(1, (int) ($cardInstallmentsConfig['max'] ?? 1))),
         ]);
     }
 

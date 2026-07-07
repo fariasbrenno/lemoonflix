@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, onUnmounted, ref, watch } from 'vue';
 import Button from '@/components/ui/Button.vue';
 import {
     Wallet,
@@ -35,6 +35,43 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['reload']);
+
+const IN_FLIGHT_PAYOUT_STATUSES = ['processing', 'awaiting_payout'];
+const PAYOUT_POLL_MS = 60_000;
+
+const hasInFlightPayout = computed(() =>
+    props.payouts.some((p) => IN_FLIGHT_PAYOUT_STATUSES.includes(p.status))
+);
+
+let payoutPollTimer = null;
+
+function stopPayoutPoll() {
+    if (payoutPollTimer !== null) {
+        clearInterval(payoutPollTimer);
+        payoutPollTimer = null;
+    }
+}
+
+function startPayoutPoll() {
+    if (payoutPollTimer !== null) {
+        return;
+    }
+    payoutPollTimer = setInterval(() => emit('reload'), PAYOUT_POLL_MS);
+}
+
+watch(
+    hasInFlightPayout,
+    (active) => {
+        if (active) {
+            startPayoutPoll();
+        } else {
+            stopPayoutPoll();
+        }
+    },
+    { immediate: true },
+);
+
+onUnmounted(stopPayoutPoll);
 
 const walletKeys = ['pix', 'card', 'boleto'];
 

@@ -261,14 +261,19 @@ class AccessEmailService
 
     /**
      * Return the access link for an order (same link used in the access email).
-     * For TYPE_LINK: deliverable_link from config; for TYPE_AREA_MEMBROS: base URL (custom domain or /m/slug).
+     * For TYPE_AREA_MEMBROS with user: signed magic link (auto-login).
+     * For TYPE_LINK: deliverable_link from config; otherwise base member area URL.
      */
     public function getAccessLinkForOrder(Order $order): string
     {
-        $order->loadMissing(['product']);
+        $order->loadMissing(['product', 'user']);
         $product = $order->product;
         if (! $product) {
             return '';
+        }
+
+        if ($product->type === Product::TYPE_AREA_MEMBROS && $order->user) {
+            return $this->resolveMemberAreaMagicLink($product, $order->user);
         }
 
         return $this->resolveLinkAcesso($product);

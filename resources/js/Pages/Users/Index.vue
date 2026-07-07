@@ -3,6 +3,7 @@ import { ref, computed } from 'vue';
 import { Link, router, useForm, usePage } from '@inertiajs/vue3';
 import LayoutInfoprodutor from '@/Layouts/LayoutInfoprodutor.vue';
 import Button from '@/components/ui/Button.vue';
+import HorizontalScrollTabs from '@/components/ui/HorizontalScrollTabs.vue';
 import { UserPlus, Trash2, Shield, User, Pencil, X } from 'lucide-vue-next';
 
 defineOptions({ layout: LayoutInfoprodutor });
@@ -122,10 +123,7 @@ function confirmDelete(u) {
         </div>
 
         <!-- Abas Usuários -->
-        <nav
-            class="inline-flex rounded-xl bg-zinc-100/80 p-1 dark:bg-zinc-800/80"
-            aria-label="Abas de usuários"
-        >
+        <HorizontalScrollTabs aria-label="Abas de usuários">
             <Link
                 v-for="t in userTabs"
                 :key="t.key"
@@ -142,7 +140,7 @@ function confirmDelete(u) {
                 <User v-else class="h-4 w-4 shrink-0" aria-hidden="true" />
                 {{ t.label }}
             </Link>
-        </nav>
+        </HorizontalScrollTabs>
 
         <div class="panel-table">
             <ul class="divide-y divide-zinc-200 dark:divide-zinc-700">

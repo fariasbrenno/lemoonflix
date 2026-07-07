@@ -3,6 +3,7 @@ import { ref, computed } from 'vue';
 import { X, ExternalLink } from 'lucide-vue-next';
 import PluginSlotHost from '@/components/plugins/PluginSlotHost.vue';
 import PluginRenderZone from '@/components/plugins/PluginRenderZone.vue';
+import HorizontalScrollTabs from '@/components/ui/HorizontalScrollTabs.vue';
 
 const props = defineProps({
     open: { type: Boolean, default: false },
@@ -135,10 +136,11 @@ function itemLabel(item) {
                     <p class="text-sm text-zinc-500">Nenhuma venda selecionada.</p>
                 </div>
 
-                <div v-else class="flex flex-1 flex-col overflow-hidden">
-                    <nav
-                        class="flex gap-1 bg-zinc-50/80 px-4 py-2 dark:bg-zinc-800/50"
+                <div v-else class="flex min-w-0 flex-1 flex-col overflow-hidden">
+                    <HorizontalScrollTabs
                         aria-label="Abas"
+                        :bleed="false"
+                        nav-class="gap-1 bg-zinc-50/80 px-4 py-2 dark:bg-zinc-800/50"
                     >
                         <button
                             type="button"
@@ -178,7 +180,7 @@ function itemLabel(item) {
                         >
                             {{ panel.label || panel.id }}
                         </button>
-                    </nav>
+                    </HorizontalScrollTabs>
 
                     <div class="flex-1 overflow-y-auto p-5">
                         <!-- Aba Venda -->

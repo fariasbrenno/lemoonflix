@@ -11,6 +11,7 @@ use App\Models\WalletTransaction;
 use App\Support\WalletBucket;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -299,7 +300,13 @@ class PayoutService
 
                 return true;
             }
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            Log::warning('PayoutService: reconcile failed', [
+                'payout_request_id' => $payoutRequest->id,
+                'cajupay_payout_id' => $payoutRequest->cajupay_payout_id,
+                'error' => $e->getMessage(),
+            ]);
+
             return false;
         }
 

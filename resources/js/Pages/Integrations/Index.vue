@@ -3,6 +3,7 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { router, usePage } from '@inertiajs/vue3';
 import LayoutInfoprodutor from '@/Layouts/LayoutInfoprodutor.vue';
 import Button from '@/components/ui/Button.vue';
+import HorizontalScrollTabs from '@/components/ui/HorizontalScrollTabs.vue';
 import AppCard from '@/components/integrations/AppCard.vue';
 import ConversionPixelsAppCard from '@/components/integrations/ConversionPixelsAppCard.vue';
 import SpedySidebar from '@/components/integrations/SpedySidebar.vue';
@@ -10,8 +11,9 @@ import UtmifySidebar from '@/components/integrations/UtmifySidebar.vue';
 import WebhookSidebar from '@/components/integrations/WebhookSidebar.vue';
 import ExternalCheckoutSidebar from '@/components/integrations/ExternalCheckoutSidebar.vue';
 import CademiSidebar from '@/components/integrations/CademiSidebar.vue';
-import ConversionPixelsSidebar from '@/components/integrations/ConversionPixelsSidebar.vue';
+import IntegraXSidebar from '@/components/integrations/IntegraXSidebar.vue';
 import PixelXSidebar from '@/components/integrations/PixelXSidebar.vue';
+import ConversionPixelsSidebar from '@/components/integrations/ConversionPixelsSidebar.vue';
 import GatewayCard from '@/components/settings/GatewayCard.vue';
 import GatewayConfigSidebar from '@/components/settings/GatewayConfigSidebar.vue';
 import { CreditCard, Zap } from 'lucide-vue-next';
@@ -55,6 +57,12 @@ const APPS_BASE = [
         image: 'images/integrations/cademi.png',
     },
     {
+        id: 'integrax',
+        name: 'IntegraX',
+        description: 'Envio de SMS automático: acesso pós-compra, PIX gerado e recuperação de carrinho. Configure o token e os textos por produto.',
+        image: 'images/integrations/integrax.png',
+    },
+    {
         id: 'pixel_x',
         name: 'Pixel X',
         description: 'Rastreamento de conversão. Envie os 10 eventos mapeados para a Pixel X com token e payload proprietário.',
@@ -87,6 +95,17 @@ const props = defineProps({
     plugin_apps: { type: Array, default: () => [] },
     conversion_pixel_integrations: { type: Array, default: () => [] },
     external_checkout_endpoints: { type: Array, default: () => [] },
+    integrax_connection: {
+        type: Object,
+        default: () => ({
+            configured: false,
+            is_active: false,
+            has_token: false,
+            api_token: '',
+            last_tested_at: null,
+            last_error: null,
+        }),
+    },
     pixel_x_integrations: { type: Array, default: () => [] },
 });
 
@@ -138,17 +157,25 @@ const APPS = computed(() =>
                 status: hasActive ? 'active' : undefined,
             };
         }
-        if (app.id === 'pixel_x') {
-            const hasActive = (props.pixel_x_integrations || []).some(
-                (i) => i.configured && i.is_active
-            );
+        if (app.id === 'external_checkout') {
+            const hasActive = (props.external_checkout_endpoints || []).some((e) => e.is_active);
             return {
                 ...app,
                 status: hasActive ? 'active' : undefined,
             };
         }
-        if (app.id === 'external_checkout') {
-            const hasActive = (props.external_checkout_endpoints || []).some((e) => e.is_active);
+        if (app.id === 'integrax') {
+            const conn = props.integrax_connection || {};
+            const hasActive = conn.configured && conn.is_active;
+            return {
+                ...app,
+                status: hasActive ? 'active' : undefined,
+            };
+        }
+        if (app.id === 'pixel_x') {
+            const hasActive = (props.pixel_x_integrations || []).some(
+                (i) => i.configured && i.is_active
+            );
             return {
                 ...app,
                 status: hasActive ? 'active' : undefined,
@@ -177,6 +204,7 @@ const spedySidebarOpen = ref(false);
 const cademiSidebarOpen = ref(false);
 const conversionPixelsSidebarOpen = ref(false);
 const externalCheckoutSidebarOpen = ref(false);
+const integraxSidebarOpen = ref(false);
 const pluginSidebarOpen = ref(false);
 const selectedPluginSlot = ref(null);
 const selectedPluginAppName = ref(null);
@@ -231,6 +259,18 @@ function closeExternalCheckoutSidebar() {
     externalCheckoutSidebarOpen.value = false;
 }
 
+function openIntegraxSidebar() {
+    integraxSidebarOpen.value = true;
+}
+
+function closeIntegraxSidebar() {
+    integraxSidebarOpen.value = false;
+}
+
+function onIntegraxSaved() {
+    router.reload({ only: ['integrax_connection'] });
+}
+
 function onExternalCheckoutSaved() {
     router.reload({ only: ['external_checkout_endpoints', 'products'] });
 }
@@ -244,9 +284,15 @@ function closeConversionPixelsSidebar() {
 }
 
 const pixelXSidebarOpen = ref(false);
-function openPixelXSidebar() { pixelXSidebarOpen.value = true; }
-function closePixelXSidebar() { pixelXSidebarOpen.value = false; }
-function onPixelXSaved() { router.reload({ only: ['pixel_x_integrations', 'products'] }); }
+function openPixelXSidebar() {
+    pixelXSidebarOpen.value = true;
+}
+function closePixelXSidebar() {
+    pixelXSidebarOpen.value = false;
+}
+function onPixelXSaved() {
+    router.reload({ only: ['pixel_x_integrations', 'products'] });
+}
 
 function openPluginSidebar(app) {
     selectedPluginSlot.value = app?.plugin_slot || (app?.plugin_component ? { component: app.plugin_component, ui_mode: 'legacy' } : null);
@@ -298,6 +344,8 @@ function onAppClick(app) {
         openCademiSidebar();
     } else if (app.id === 'conversion_pixels') {
         openConversionPixelsSidebar();
+    } else if (app.id === 'integrax') {
+        openIntegraxSidebar();
     } else if (app.id === 'pixel_x') {
         openPixelXSidebar();
     } else if (app.plugin) {
@@ -354,10 +402,7 @@ watch(() => page.url, () => syncGatewayFromQuery());
 
 <template>
     <div class="space-y-6">
-        <nav
-            class="inline-flex flex-wrap gap-1 rounded-xl bg-zinc-100/80 p-1 dark:bg-zinc-800/80"
-            aria-label="Abas de integrações"
-        >
+        <HorizontalScrollTabs aria-label="Abas de integrações">
             <button
                 v-for="tab in TABS"
                 :key="tab.id"
@@ -373,7 +418,7 @@ watch(() => page.url, () => syncGatewayFromQuery());
                 <component :is="tab.icon" class="h-4 w-4 shrink-0" aria-hidden="true" />
                 {{ tab.label }}
             </button>
-        </nav>
+        </HorizontalScrollTabs>
 
         <!-- Aba Apps -->
         <template v-if="currentTab === 'apps'">
@@ -475,6 +520,12 @@ watch(() => page.url, () => syncGatewayFromQuery());
             :endpoints="external_checkout_endpoints"
             @close="closeExternalCheckoutSidebar"
             @saved="onExternalCheckoutSaved"
+        />
+        <IntegraXSidebar
+            :open="integraxSidebarOpen"
+            :integrax_connection="integrax_connection"
+            @close="closeIntegraxSidebar"
+            @saved="onIntegraxSaved"
         />
         <PixelXSidebar
             :open="pixelXSidebarOpen"

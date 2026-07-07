@@ -89,6 +89,7 @@ fi
 cd "$INSTALL_DIR"
 $SUDO rm -f public/hot 2>/dev/null || true
 $SUDO sh docker/up.sh
+$SUDO sh docker/ensure-vapid.sh
 
 echo ""
 echo "Atualização concluída e stack reiniciado."

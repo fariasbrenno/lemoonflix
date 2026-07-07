@@ -7,6 +7,7 @@ import Button from '@/components/ui/Button.vue';
 import Toggle from '@/components/ui/Toggle.vue';
 import ImageUpload from '@/components/checkout/ImageUpload.vue';
 import CheckoutContentBlocksEditor from '@/components/checkout-builder/CheckoutContentBlocksEditor.vue';
+import HorizontalScrollTabs from '@/components/ui/HorizontalScrollTabs.vue';
 import { initContentBlocksFromAppearance } from '@/lib/checkoutContentFormats';
 import {
     PREVIEW_MESSAGE_TYPE,
@@ -14,6 +15,7 @@ import {
     PREVIEW_WINDOW_CALLBACK,
     broadcastPreviewPayload,
 } from '@/lib/checkoutBuilderPreview';
+import { buildCheckoutEmbedSnippet } from '@/lib/checkoutEmbed';
 import {
     ChevronDown,
     ChevronRight,
@@ -59,6 +61,7 @@ const sectionsOpen = ref({
     notification: true,
     video: true,
     redirect: true,
+    embed: true,
     seo: true,
     support_button: true,
     footer: true,
@@ -117,6 +120,12 @@ const configForm = reactive({
     back_redirect: {
         enabled: props.config?.back_redirect?.enabled ?? false,
         url: props.config?.back_redirect?.url ?? '',
+    },
+    embed: {
+        enabled: props.config?.embed?.enabled ?? false,
+        allowed_origins: Array.isArray(props.config?.embed?.allowed_origins)
+            ? [...props.config.embed.allowed_origins]
+            : [],
     },
     seo: {
         title: props.config?.seo?.title ?? '',
@@ -246,6 +255,38 @@ const previewIframeUrl = computed(() => {
     url.searchParams.set('preview', '1');
     return url.toString();
 });
+
+const embedAllowedOriginsText = computed({
+    get: () => (configForm.embed.allowed_origins || []).join('\n'),
+    set: (val) => {
+        configForm.embed.allowed_origins = String(val || '')
+            .split(/[\r\n,]+/)
+            .map((s) => s.trim())
+            .filter(Boolean);
+    },
+});
+
+const embedSnippet = computed(() => {
+    if (!previewUrl.value || !configForm.embed.enabled) {
+        return '';
+    }
+    return buildCheckoutEmbedSnippet(previewUrl.value);
+});
+
+const embedCopied = ref(false);
+
+async function copyEmbedSnippet() {
+    if (!embedSnippet.value) {
+        return;
+    }
+    try {
+        await navigator.clipboard.writeText(embedSnippet.value);
+        embedCopied.value = true;
+        setTimeout(() => {
+            embedCopied.value = false;
+        }, 2000);
+    } catch (_) {}
+}
 
 const previewIframeSrc = computed(() => {
     if (!previewIframeUrl.value) return null;
@@ -430,13 +471,15 @@ const inputClass =
             <!-- Sidebar esquerda: rolagem apenas aqui -->
             <div class="min-h-0 w-full shrink-0 space-y-4 overflow-y-auto lg:w-[380px] lg:max-h-full">
                 <!-- Tabs -->
-                <div
-                    class="flex flex-wrap gap-1 rounded-xl border border-zinc-200 bg-white p-1 dark:border-zinc-700 dark:bg-zinc-800"
+                <HorizontalScrollTabs
+                    aria-label="Abas do checkout"
+                    :bleed="false"
+                    nav-class="gap-1 rounded-xl border border-zinc-200 bg-white p-1 dark:border-zinc-700 dark:bg-zinc-800"
                 >
                     <button
                         type="button"
                         :class="[
-                            'min-w-0 flex-1 basis-[calc(50%-0.25rem)] rounded-lg px-2 py-2 text-xs font-medium transition sm:basis-auto sm:px-3 sm:text-sm',
+                            'rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm',
                             activeTab === 'geral'
                                 ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
                                 : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-700',
@@ -448,7 +491,7 @@ const inputClass =
                     <button
                         type="button"
                         :class="[
-                            'min-w-0 flex-1 basis-[calc(50%-0.25rem)] rounded-lg px-2 py-2 text-xs font-medium transition sm:basis-auto sm:px-3 sm:text-sm',
+                            'rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm',
                             activeTab === 'recursos'
                                 ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
                                 : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-700',
@@ -460,7 +503,7 @@ const inputClass =
                     <button
                         type="button"
                         :class="[
-                            'min-w-0 flex-1 basis-[calc(50%-0.25rem)] rounded-lg px-2 py-2 text-xs font-medium transition sm:basis-auto sm:px-3 sm:text-sm',
+                            'rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm',
                             activeTab === 'vendas'
                                 ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
                                 : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-700',
@@ -472,7 +515,7 @@ const inputClass =
                     <button
                         type="button"
                         :class="[
-                            'min-w-0 flex-1 basis-[calc(50%-0.25rem)] rounded-lg px-2 py-2 text-xs font-medium transition sm:basis-auto sm:px-3 sm:text-sm',
+                            'rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm',
                             activeTab === 'template'
                                 ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
                                 : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-700',
@@ -484,7 +527,7 @@ const inputClass =
                     <button
                         type="button"
                         :class="[
-                            'min-w-0 flex-1 basis-[calc(50%-0.25rem)] rounded-lg px-2 py-2 text-xs font-medium transition sm:basis-auto sm:px-3 sm:text-sm',
+                            'rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm',
                             activeTab === 'social'
                                 ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
                                 : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-700',
@@ -496,7 +539,7 @@ const inputClass =
                     <button
                         type="button"
                         :class="[
-                            'flex min-w-0 flex-1 basis-full items-center justify-center gap-1 rounded-lg px-2 py-2 text-xs font-medium transition sm:basis-auto sm:flex-1 sm:px-3 sm:text-sm',
+                            'flex items-center gap-1 rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm',
                             activeTab === 'avancado'
                                 ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
                                 : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-700',
@@ -506,7 +549,7 @@ const inputClass =
                         <Code2 class="h-3.5 w-3.5 shrink-0 opacity-80" />
                         Avançado
                     </button>
-                </div>
+                </HorizontalScrollTabs>
 
                 <!-- Aba Geral -->
                 <div v-show="activeTab === 'geral'" class="space-y-4">
@@ -823,6 +866,73 @@ const inputClass =
                             <div v-show="configForm.back_redirect.enabled">
                                 <label class="mb-1.5 block text-sm font-medium text-zinc-700 dark:text-zinc-300">URL ao clicar voltar</label>
                                 <input v-model="configForm.back_redirect.url" type="url" :class="inputClass" placeholder="https://..." />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Incorporar em site externo (iframe) -->
+                <div class="panel-card-lg">
+                    <button
+                        type="button"
+                        class="flex w-full items-center justify-between gap-2 px-4 py-3 text-left font-semibold text-zinc-900 dark:text-white"
+                        @click="toggleSection('embed')"
+                    >
+                        <span class="flex items-center gap-2">
+                            <Code2 class="h-4 w-4 text-zinc-500" />
+                            Incorporar em iframe
+                        </span>
+                        <ChevronDown v-if="sectionsOpen.embed" class="h-5 w-5 shrink-0" />
+                        <ChevronRight v-else class="h-5 w-5 shrink-0" />
+                    </button>
+                    <div v-show="sectionsOpen.embed" class="border-t border-zinc-200 px-4 py-4 dark:border-zinc-700">
+                        <div class="space-y-4">
+                            <Toggle
+                                v-model="configForm.embed.enabled"
+                                label="Permitir carregar o checkout em iframe em páginas externas"
+                            />
+                            <p class="text-xs text-zinc-500 dark:text-zinc-400">
+                                Quando ativo, o checkout pode ser embutido no seu site de vendas, landing page ou blog.
+                                Requer HTTPS em produção para pagamentos com cartão e carteiras digitais.
+                            </p>
+                            <div v-show="configForm.embed.enabled">
+                                <label class="mb-1.5 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                                    Domínios permitidos (opcional)
+                                </label>
+                                <textarea
+                                    v-model="embedAllowedOriginsText"
+                                    rows="3"
+                                    :class="inputClass"
+                                    placeholder="https://meusite.com.br&#10;https://www.outrosite.com"
+                                />
+                                <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                                    Um domínio por linha. Deixe vazio para permitir qualquer site incorporar o checkout.
+                                </p>
+                                <div v-if="previewUrl" class="mt-4 space-y-2">
+                                    <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                                        Código para colar no seu site
+                                    </label>
+                                    <textarea
+                                        :value="embedSnippet"
+                                        rows="10"
+                                        readonly
+                                        class="w-full rounded-lg border border-zinc-200 bg-zinc-50 font-mono text-xs text-zinc-800 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200"
+                                    />
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <Button type="button" size="sm" @click="copyEmbedSnippet">
+                                            {{ embedCopied ? 'Copiado!' : 'Copiar código' }}
+                                        </Button>
+                                        <a
+                                            :href="previewUrl"
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            class="inline-flex items-center gap-1 text-sm font-medium text-sky-600 hover:underline dark:text-sky-400"
+                                        >
+                                            <ExternalLink class="h-3.5 w-3.5" />
+                                            Abrir checkout
+                                        </a>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>

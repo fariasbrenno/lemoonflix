@@ -52,6 +52,48 @@ export function subscriptionMatchesVapid(subscription, vapidPublicBase64) {
 }
 
 /**
+ * Remove registros legados de /painel-sw.js com scope raiz ("/") — pós-update v2.0.
+ * Deve ser awaited antes de registrar o SW com scope /painel/ e recriar a subscription.
+ *
+ * @returns {Promise<boolean>} true se removeu algum registro legado
+ */
+export async function migrateLegacyPanelServiceWorker(swScriptUrl) {
+    if (typeof navigator === 'undefined' || !navigator.serviceWorker?.getRegistrations) {
+        return false;
+    }
+
+    const origin = window.location.origin;
+    const scriptMarker = typeof swScriptUrl === 'string' && swScriptUrl !== '' ? swScriptUrl : '/painel-sw.js';
+    let removed = false;
+
+    try {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(
+            regs.map(async (reg) => {
+                const scriptUrl =
+                    reg?.active?.scriptURL ||
+                    reg?.installing?.scriptURL ||
+                    reg?.waiting?.scriptURL ||
+                    '';
+                const scope = reg?.scope || '';
+                const isTargetSw =
+                    typeof scriptUrl === 'string' &&
+                    (scriptUrl.includes(scriptMarker) || scriptUrl.endsWith('/painel-sw.js'));
+                const isRootScope = typeof scope === 'string' && scope === `${origin}/`;
+                if (isTargetSw && isRootScope) {
+                    const ok = await reg.unregister();
+                    if (ok) {
+                        removed = true;
+                    }
+                }
+            }),
+        );
+    } catch (_) {}
+
+    return removed;
+}
+
+/**
  * Aguarda o registration ficar utilizável sem depender de navigator.serviceWorker.ready
  * (em páginas fora do scope do SW, ex. /dashboard com scope /painel/, ready pode nunca resolver).
  */
@@ -99,7 +141,7 @@ export function waitForRegistrationReady(registration, timeoutMs = 12000) {
  * @param {string} options.swScope - ex: /painel/
  * @param {string} options.vapidPublic - chave pública VAPID (base64url)
  * @param {boolean} [options.forceRenew=false] - cancela e recria subscription
- * @param {(payload: object) => Promise<boolean>} options.syncToServer - POST endpoint + keys; payload inclui renewed
+ * @param {(payload: object) => Promise<boolean|{ ok: boolean }>} options.syncToServer - POST endpoint + keys; payload inclui renewed
  * @returns {Promise<{ ok: boolean, reason: string|null, renewed: boolean }>}
  */
 export async function ensurePushSubscription({
@@ -123,6 +165,12 @@ export async function ensurePushSubscription({
     }
 
     let renewed = false;
+
+    const migratedLegacy = await migrateLegacyPanelServiceWorker(swScriptUrl);
+    if (migratedLegacy) {
+        forceRenew = true;
+        renewed = true;
+    }
 
     let reg;
     try {
@@ -181,7 +229,19 @@ export async function ensurePushSubscription({
         return { ok: false, reason: 'subscription_invalid', renewed };
     }
 
-    const synced = await syncToServer({ ...payload, renewed });
+    let syncResult;
+    try {
+        syncResult = await syncToServer({ ...payload, renewed });
+    } catch (e) {
+        if (import.meta.env?.DEV) {
+            console.warn('[push] sync failed:', e);
+        }
+        return { ok: false, reason: 'subscription_sync_failed', renewed };
+    }
+
+    const synced =
+        syncResult === true ||
+        (typeof syncResult === 'object' && syncResult !== null && syncResult.ok === true);
     if (!synced) {
         return { ok: false, reason: 'subscription_sync_failed', renewed };
     }

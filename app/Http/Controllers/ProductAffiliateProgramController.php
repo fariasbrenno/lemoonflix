@@ -23,15 +23,7 @@ class ProductAffiliateProgramController extends Controller
     {
         $this->authorizeTenantProduct($produto);
 
-        $program = ProductAffiliateProgram::firstOrCreate(
-            ['product_id' => $produto->id],
-            [
-                'enabled' => false,
-                'default_commission_percent' => 10,
-                'manual_approval' => true,
-                'public_slug' => $this->uniquePublicSlug($produto),
-            ]
-        );
+        $program = $this->resolveProgramForProduct($produto);
 
         $affiliates = ProductAffiliate::query()
             ->where('product_id', $produto->id)
@@ -50,16 +42,19 @@ class ProductAffiliateProgramController extends Controller
     {
         $this->authorizeTenantProduct($produto);
 
-        $program = ProductAffiliateProgram::firstOrCreate(
-            ['product_id' => $produto->id],
-            ['enabled' => false, 'default_commission_percent' => 10, 'manual_approval' => true]
-        );
+        $program = $this->resolveProgramForProduct($produto);
+
+        $request->merge([
+            'support_email' => $request->filled('support_email') ? $request->input('support_email') : null,
+            'public_slug' => $request->filled('public_slug') ? $request->input('public_slug') : null,
+            'description' => $request->filled('description') ? $request->input('description') : null,
+        ]);
 
         $validated = $request->validate([
-            'enabled' => ['boolean'],
+            'enabled' => ['sometimes', 'boolean'],
             'default_commission_percent' => ['required', 'numeric', 'min:0', 'max:100'],
-            'manual_approval' => ['boolean'],
-            'share_buyer_data' => ['boolean'],
+            'manual_approval' => ['sometimes', 'boolean'],
+            'share_buyer_data' => ['sometimes', 'boolean'],
             'public_slug' => ['nullable', 'string', 'max:64', Rule::unique('product_affiliate_programs', 'public_slug')->ignore($program->id)],
             'support_email' => ['nullable', 'email', 'max:255'],
             'description' => ['nullable', 'string', 'max:5000'],
@@ -72,7 +67,18 @@ class ProductAffiliateProgramController extends Controller
             $validated['public_slug'] = $program->public_slug ?: $this->uniquePublicSlug($produto);
         }
 
-        $program->update($validated);
+        $payload = array_merge($validated, [
+            'enabled' => $request->has('enabled') ? $request->boolean('enabled') : (bool) $program->enabled,
+            'manual_approval' => $request->has('manual_approval') ? $request->boolean('manual_approval') : (bool) $program->manual_approval,
+            'share_buyer_data' => $request->has('share_buyer_data') ? $request->boolean('share_buyer_data') : (bool) $program->share_buyer_data,
+        ]);
+
+        $program->update($payload);
+
+        if ($payload['enabled'] && empty($produto->checkout_slug)) {
+            $produto->update(['checkout_slug' => Product::generateUniqueCheckoutSlug()]);
+            $produto->refresh();
+        }
 
         return response()->json(['program' => $this->programToArray($program->fresh(), $produto)]);
     }
@@ -142,6 +148,41 @@ class ProductAffiliateProgramController extends Controller
         return $slug;
     }
 
+    private function resolveProgramForProduct(Product $produto): ProductAffiliateProgram
+    {
+        $programs = ProductAffiliateProgram::query()
+            ->where('product_id', $produto->id)
+            ->orderBy('id')
+            ->get();
+
+        if ($programs->count() > 1) {
+            $keep = $programs->first();
+            ProductAffiliateProgram::query()
+                ->where('product_id', $produto->id)
+                ->whereKeyNot($keep->id)
+                ->delete();
+
+            return $keep;
+        }
+
+        if ($programs->count() === 1) {
+            $program = $programs->first();
+            if (! $program->public_slug) {
+                $program->update(['public_slug' => $this->uniquePublicSlug($produto)]);
+            }
+
+            return $program->fresh();
+        }
+
+        return ProductAffiliateProgram::create([
+            'product_id' => $produto->id,
+            'enabled' => false,
+            'default_commission_percent' => 10,
+            'manual_approval' => true,
+            'public_slug' => $this->uniquePublicSlug($produto),
+        ]);
+    }
+
     private function programToArray(ProductAffiliateProgram $program, Product $produto): array
     {
         $slug = $program->public_slug;
@@ -158,14 +199,14 @@ class ProductAffiliateProgramController extends Controller
             'settlement_days_pix' => $program->settlement_days_pix,
             'settlement_days_card' => $program->settlement_days_card,
             'settlement_days_boleto' => $program->settlement_days_boleto,
-            'public_page_url' => $slug ? url('/afiliar/'.$slug) : null,
+            'public_page_url' => ($program->enabled && $slug) ? url('/afiliar/'.$slug) : null,
             'checkout_slug' => $produto->checkout_slug,
         ];
     }
 
     private function affiliateToArray(ProductAffiliate $a, Product $produto): array
     {
-        $link = url('/c/'.$produto->checkout_slug.'?ref='.$a->affiliate_code);
+        $link = $this->affiliateCheckoutUrl($produto, $a->affiliate_code);
 
         return [
             'id' => $a->id,
@@ -196,5 +237,15 @@ class ProductAffiliateProgramController extends Controller
         } catch (\Throwable) {
             // silent
         }
+    }
+
+    private function affiliateCheckoutUrl(Product $produto, string $affiliateCode): ?string
+    {
+        $checkoutSlug = trim((string) $produto->checkout_slug);
+        if ($checkoutSlug === '' || ! $produto->is_active) {
+            return null;
+        }
+
+        return url('/c/'.$checkoutSlug.'?ref='.$affiliateCode);
     }
 }

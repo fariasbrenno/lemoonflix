@@ -35,13 +35,16 @@ class SignedOrMemberAreaRedirect
                 $product = $productId > 0 ? Product::find($productId) : null;
             }
 
+            $flash = 'Link de acesso expirado ou inválido. Faça login com o e-mail e senha enviados na compra, ou solicite um novo link ao suporte.';
+
             if ($product instanceof Product && $product->type === Product::TYPE_AREA_MEMBROS) {
                 $base = rtrim($this->memberAreaResolver->baseUrlForProduct($product), '/');
-                return redirect()->to($base.'/login');
+
+                return redirect()->to($base.'/login')->with('error', $flash);
             }
 
             // Last resort: avoid exposing signature error
-            return redirect()->to('/login');
+            return redirect()->to('/login')->with('error', $flash);
         }
     }
 }

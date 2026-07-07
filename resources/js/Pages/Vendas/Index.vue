@@ -1,10 +1,12 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import { router, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import LayoutInfoprodutor from '@/Layouts/LayoutInfoprodutor.vue';
+import { useInertiaPagination } from '@/composables/useInertiaPagination';
 import { whatsappUrlForPhone } from '@/lib/utils';
 import VendasTabs from '@/components/vendas/VendasTabs.vue';
+import HorizontalScrollTabs from '@/components/ui/HorizontalScrollTabs.vue';
 import VendaDetailSidebar from '@/components/vendas/VendaDetailSidebar.vue';
 import PluginRuntimeMount from '@/components/plugins/PluginRuntimeMount.vue';
 import PluginRenderZone from '@/components/plugins/PluginRenderZone.vue';
@@ -43,38 +45,16 @@ const props = defineProps({
 
 const vendasList = computed(() => props.vendas?.data ?? props.vendas ?? []);
 
-const paginationPrev = computed(() => props.vendas?.links?.[0] ?? null);
-const paginationNext = computed(() => {
-    const links = props.vendas?.links ?? [];
-    return links.length > 1 ? links[links.length - 1] : null;
-});
-const paginationPages = computed(() => {
-    const links = props.vendas?.links ?? [];
-    if (links.length <= 2) return [];
-    return links.slice(1, -1);
-});
-const paginationSummary = computed(() => {
-    const current = props.vendas?.current_page ?? 1;
-    const last = props.vendas?.last_page ?? 1;
-    return `${current} / ${last}`;
-});
-
-function visitPaginationPage(url) {
-    if (!url) return;
-    router.visit(url, { preserveState: true });
-}
-
-function paginationLinkClass(link, { iconOnly = false } = {}) {
-    return [
-        'relative inline-flex shrink-0 items-center justify-center rounded-lg text-sm font-medium transition',
-        iconOnly ? 'h-9 w-9' : 'min-w-9 px-3 py-2',
-        link?.active
-            ? 'z-10 bg-[var(--color-primary)] text-white'
-            : link?.url
-              ? 'text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-700'
-              : 'cursor-not-allowed text-zinc-400 dark:text-zinc-500',
-    ];
-}
+const {
+    paginationPrev,
+    paginationNext,
+    paginationPages,
+    paginationSummary,
+    hasPagination,
+    isEllipsisLink,
+    visitPaginationPage,
+    paginationLinkClass,
+} = useInertiaPagination(() => props.vendas);
 
 const valuesVisible = ref(true);
 const sidebarOpen = ref(false);
@@ -145,6 +125,27 @@ const filterForm = ref({
     utm_campaign: props.filters?.utm_campaign ?? '',
 });
 
+watch(
+    () => props.filters,
+    (filters) => {
+        if (!filters || typeof filters !== 'object') return;
+        filterForm.value = {
+            q: filters.q ?? '',
+            period: filters.period ?? 'all',
+            date_from: filters.date_from ?? '',
+            date_to: filters.date_to ?? '',
+            product_id: filters.product_id ?? '',
+            offer_id: filters.offer_id ?? '',
+            payment_method: filters.payment_method ?? 'all',
+            payment_status: filters.payment_status ?? 'all',
+            utm_source: filters.utm_source ?? '',
+            utm_medium: filters.utm_medium ?? '',
+            utm_campaign: filters.utm_campaign ?? '',
+        };
+    },
+    { deep: true }
+);
+
 const advancedFiltersOpen = ref(false);
 let searchTimer = null;
 
@@ -174,7 +175,7 @@ function buildQuery(overrides = {}) {
 
 function applyFilters(overrides = {}) {
     router.get('/vendas', buildQuery(overrides), {
-        preserveState: true,
+        preserveState: false,
         preserveScroll: true,
         replace: true,
     });
@@ -559,11 +560,8 @@ function openProofExport() {
         </div>
 
         <!-- Abas de filtro e exportação -->
-        <div class="flex flex-wrap items-center justify-between gap-3">
-            <nav
-                class="inline-flex rounded-xl bg-zinc-100/80 p-1 dark:bg-zinc-800/80"
-                aria-label="Filtrar vendas"
-            >
+        <div class="flex min-w-0 flex-wrap items-center justify-between gap-3">
+            <HorizontalScrollTabs aria-label="Filtrar vendas" class="min-w-0 max-w-full flex-1 sm:max-w-none">
                 <button
                     v-for="opt in filterOptions"
                     :key="opt.value"
@@ -579,7 +577,7 @@ function openProofExport() {
                 >
                     {{ opt.label }}
                 </button>
-            </nav>
+            </HorizontalScrollTabs>
             <div class="flex items-center gap-2">
                 <a
                     :href="exportCsvUrl"
@@ -990,8 +988,8 @@ function openProofExport() {
 
         <!-- Paginação -->
         <nav
-            v-if="vendas?.links?.length > 3"
-            class="flex w-full items-center gap-2"
+            v-if="hasPagination"
+            class="relative z-10 flex w-full items-center gap-2 py-2"
             aria-label="Paginação"
         >
             <button
@@ -1011,7 +1009,7 @@ function openProofExport() {
             <div class="hidden min-w-0 flex-1 items-center justify-center gap-1 overflow-x-auto no-scrollbar sm:flex">
                 <template v-for="(link, index) in paginationPages" :key="`page-${index}-${link.label}`">
                     <span
-                        v-if="link.label === '...'"
+                        v-if="isEllipsisLink(link)"
                         class="inline-flex min-w-9 items-center justify-center px-2 py-2 text-sm text-zinc-400 dark:text-zinc-500"
                         aria-hidden="true"
                     >…</span>

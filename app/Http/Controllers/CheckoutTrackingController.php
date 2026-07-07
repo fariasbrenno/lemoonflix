@@ -16,6 +16,7 @@ class CheckoutTrackingController extends Controller
             'step' => ['required', 'string', 'in:form_started,form_filled'],
             'email' => ['nullable', 'email'],
             'name' => ['nullable', 'string', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:32'],
             'country_code' => ['nullable', 'string', 'size:2'],
         ]);
 
@@ -40,6 +41,9 @@ class CheckoutTrackingController extends Controller
         }
         if (array_key_exists('name', $validated)) {
             $updates['name'] = $validated['name'];
+        }
+        if (! empty($validated['phone'])) {
+            $updates['phone'] = $validated['phone'];
         }
 
         if ($step === CheckoutSession::STEP_FORM_STARTED && $session->form_started_at === null) {

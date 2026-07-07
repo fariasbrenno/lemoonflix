@@ -50,6 +50,8 @@ const props = defineProps({
     card_pagarme_public_key: { type: String, default: '' },
     /** Base da API v5 para tokenização (igual config/services.pagarme.base_url). */
     card_pagarme_api_base_url: { type: String, default: 'https://api.pagar.me/core/v5' },
+    card_installments_enabled: { type: Boolean, default: false },
+    card_max_installments: { type: Number, default: 1 },
     commerce_checkout: { type: Boolean, default: false },
     commerce_line_items: { type: Array, default: () => [] },
     payment_summary: { type: Array, default: () => [] },
@@ -278,6 +280,14 @@ const cardHolderName = ref('');
 const efiCardNumber = ref('');
 const efiCardExp = ref('');
 const efiCardCvv = ref('');
+const selectedInstallments = ref(1);
+
+const cardMaxInstallments = computed(() => Math.min(12, Math.max(1, props.card_max_installments || 1)));
+const showCardInstallments = computed(() =>
+    props.card_installments_enabled
+    && cardMaxInstallments.value > 1
+    && (canPayWithPagarme.value || canPayWithEfi.value)
+);
 const cardSubmitting = ref(false);
 
 /** tokenizecard.js exige exp_month/exp_year no DOM; derivamos do mesmo campo MM/AAAA que o Efí. */
@@ -602,10 +612,13 @@ async function submitCard(ev) {
                 }
             }
             const last4 = numberDigits.slice(-4);
+            const installments = props.card_installments_enabled
+                ? Math.min(cardMaxInstallments.value, Math.max(1, selectedInstallments.value))
+                : 1;
             postPay({
                 session_token: props.session_token,
                 payment_method: 'card',
-                payment_token: JSON.stringify({ card_token: tokenId, installments: 1 }),
+                payment_token: JSON.stringify({ card_token: tokenId, installments }),
                 card_mask: last4 ? `**** ${last4}` : '',
             }, {
                 onError: (err) => {
@@ -1107,6 +1120,25 @@ async function submitCard(ev) {
                                         <div ref="stripeCardRef" class="rounded-lg border-2 border-zinc-200 bg-white px-4 py-3 min-h-[3.25rem]" />
                                     </div>
                                 </template>
+                                <div
+                                    v-if="showCardInstallments"
+                                    class="space-y-2"
+                                >
+                                    <label for="api-installments-select" class="block text-sm font-medium text-zinc-700">Parcelas</label>
+                                    <select
+                                        id="api-installments-select"
+                                        v-model.number="selectedInstallments"
+                                        class="w-full rounded-lg border border-zinc-300 bg-white px-4 py-3 text-base text-zinc-900 shadow-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                                    >
+                                        <option
+                                            v-for="n in cardMaxInstallments"
+                                            :key="n"
+                                            :value="n"
+                                        >
+                                            {{ n }}x de {{ formatPrice(amount / n, currency) }}
+                                        </option>
+                                    </select>
+                                </div>
                                 <div class="flex gap-2">
                                     <button
                                         type="button"

@@ -109,7 +109,7 @@ function submit() {
                                         type="email"
                                         autocomplete="email"
                                         required
-                                        class="wl-input block w-full rounded-xl border border-zinc-200 bg-zinc-50 py-3 pl-11 pr-4 text-sm text-zinc-900 placeholder-zinc-400 transition dark:border-zinc-600 dark:bg-zinc-900/60 dark:text-white dark:placeholder-zinc-500"
+                                        class="wl-input block w-full rounded-xl border border-zinc-200 bg-zinc-50 py-3 pl-11 pr-4 text-base text-zinc-900 placeholder-zinc-400 transition dark:border-zinc-600 dark:bg-zinc-900/60 dark:text-white dark:placeholder-zinc-500"
                                         placeholder="seu@email.com"
                                     />
                                 </div>
@@ -133,7 +133,7 @@ function submit() {
                                         :type="showPassword ? 'text' : 'password'"
                                         autocomplete="current-password"
                                         required
-                                        class="wl-input block w-full rounded-xl border border-zinc-200 bg-zinc-50 py-3 pl-11 pr-12 text-sm text-zinc-900 placeholder-zinc-400 transition dark:border-zinc-600 dark:bg-zinc-900/60 dark:text-white dark:placeholder-zinc-500"
+                                        class="wl-input block w-full rounded-xl border border-zinc-200 bg-zinc-50 py-3 pl-11 pr-12 text-base text-zinc-900 placeholder-zinc-400 transition dark:border-zinc-600 dark:bg-zinc-900/60 dark:text-white dark:placeholder-zinc-500"
                                         placeholder="••••••••"
                                     />
                                     <button

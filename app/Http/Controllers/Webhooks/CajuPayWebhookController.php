@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers\Webhooks;
 
+use App\Gateways\CajuPay\CajuPayDriver;
 use App\Http\Controllers\Controller;
 use App\Jobs\ProcessPaymentWebhook;
 use App\Models\GatewayCredential;
 use App\Models\Order;
+use App\Models\PayoutRequest;
 use App\Models\RefundRequest;
+use App\Services\PayoutService;
 use App\Services\RefundService;
 use App\Support\CajuPayPaymentId;
 use Illuminate\Http\JsonResponse;
@@ -58,6 +61,16 @@ class CajuPayWebhookController extends Controller
             Log::warning('CajuPayWebhook: timestamp fora da janela', ['age_seconds' => $age]);
 
             return response()->json(['message' => 'Stale timestamp'], 401);
+        }
+
+        if ($this->isPayoutEvent($eventType)) {
+            return $this->handlePayoutEvent(
+                $payload,
+                $eventType,
+                $raw,
+                (string) $signatureTs,
+                $signatureHex,
+            );
         }
 
         $object = $this->extractObject($payload);
@@ -128,9 +141,35 @@ class CajuPayWebhookController extends Controller
         $webhookMeta = array_merge($payload, ['webhook_source' => 'cajupay_hmac_verified']);
 
         switch ($eventType) {
+            case 'pix_parcelado.installment.paid':
+                $sequence = (int) ($object['sequence'] ?? ($object['installment_sequence'] ?? 0));
+                $shouldComplete = $sequence <= 1;
+                if ($shouldComplete && $dispatchId !== '') {
+                    ProcessPaymentWebhook::dispatchSync(self::SLUG, $dispatchId, 'order.paid', 'paid', array_merge(
+                        $webhookMeta,
+                        ['pix_parcelado_sequence' => $sequence]
+                    ));
+                } elseif ($order !== null) {
+                    $meta = is_array($order->metadata) ? $order->metadata : [];
+                    $meta['pix_parcelado_last_paid_sequence'] = $sequence;
+                    $order->update(['metadata' => $meta]);
+                }
+                break;
+            case 'pix_parcelado.plan.defaulted':
+                if ($order !== null) {
+                    $meta = is_array($order->metadata) ? $order->metadata : [];
+                    $meta['pix_parcelado_defaulted'] = true;
+                    $order->update(['metadata' => $meta]);
+                }
+                break;
             case 'checkout.payment.paid':
             case 'pix.payment.paid':
             case 'card.payment.succeeded':
+                $productRef = is_array($object) ? (string) ($object['product_ref'] ?? '') : '';
+                if ($productRef === 'pix_parcelado' && $order !== null && $order->status !== 'completed') {
+                    ProcessPaymentWebhook::dispatchSync(self::SLUG, $dispatchId !== '' ? $dispatchId : (string) $order->gateway_id, 'order.paid', 'paid', $webhookMeta);
+                    break;
+                }
                 if ($dispatchId !== '') {
                     ProcessPaymentWebhook::dispatchSync(self::SLUG, $dispatchId, 'order.paid', 'paid', $webhookMeta);
                 }
@@ -178,7 +217,118 @@ class CajuPayWebhookController extends Controller
             'checkout.payment.paid',
             'pix.payment.paid',
             'card.payment.succeeded',
+            'pix_parcelado.installment.paid',
         ], true);
+    }
+
+    private function isPayoutEvent(string $eventType): bool
+    {
+        return str_starts_with($eventType, 'payout.');
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function handlePayoutEvent(
+        array $payload,
+        string $eventType,
+        string $raw,
+        string $signatureTs,
+        string $signatureHex,
+    ): JsonResponse {
+        $object = $this->extractObject($payload);
+        $payoutId = $this->pickPayoutId($object);
+
+        $payoutRequest = null;
+        if ($payoutId !== '') {
+            $payoutRequest = PayoutRequest::query()
+                ->where('cajupay_payout_id', $payoutId)
+                ->first();
+        }
+
+        $signingSecret = $this->resolveSigningSecret(
+            $raw,
+            $signatureTs,
+            $signatureHex,
+            $payoutRequest?->tenant_id
+        );
+        if ($signingSecret === null) {
+            Log::warning('CajuPayWebhook: assinatura inválida em evento de saque', [
+                'event' => $eventType,
+                'payout_id' => $payoutId,
+                'payout_request_id' => $payoutRequest?->id,
+            ]);
+
+            return response()->json(['message' => 'Unauthorized'], 401);
+        }
+
+        if ($payoutRequest === null) {
+            Log::debug('CajuPayWebhook: saque não encontrado', [
+                'event' => $eventType,
+                'payout_id' => $payoutId,
+            ]);
+
+            return response()->json(['received' => true]);
+        }
+
+        if ($payoutRequest->isTerminal()) {
+            return response()->json(['received' => true]);
+        }
+
+        $statusSource = is_array($object) ? $object : $payload;
+        $driver = app(CajuPayDriver::class);
+        $normalized = $driver->normalizePayoutStatus($statusSource);
+        $payoutService = app(PayoutService::class);
+
+        $payoutRequest->update([
+            'cajupay_response' => array_merge(
+                is_array($payoutRequest->cajupay_response) ? $payoutRequest->cajupay_response : [],
+                ['last_webhook' => $payload]
+            ),
+            'cajupay_status' => $normalized,
+        ]);
+
+        if ($normalized === 'paid') {
+            $payoutService->confirmPayoutSuccess($payoutRequest->fresh());
+            Log::info('CajuPayWebhook: saque concluído via webhook', [
+                'event' => $eventType,
+                'payout_request_id' => $payoutRequest->id,
+                'cajupay_payout_id' => $payoutId,
+            ]);
+        } elseif (in_array($normalized, ['failed', 'cancelled'], true)) {
+            $payoutService->markPayoutFailed(
+                $payoutRequest->fresh(),
+                (string) ($statusSource['failure_reason'] ?? $statusSource['message'] ?? 'Saque falhou na CajuPay.')
+            );
+            Log::info('CajuPayWebhook: saque falhou via webhook', [
+                'event' => $eventType,
+                'payout_request_id' => $payoutRequest->id,
+                'cajupay_payout_id' => $payoutId,
+            ]);
+        } elseif ($payoutRequest->status === PayoutRequest::STATUS_PROCESSING) {
+            $payoutRequest->update(['status' => PayoutRequest::STATUS_AWAITING_PAYOUT]);
+        }
+
+        return response()->json(['received' => true]);
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $object
+     */
+    private function pickPayoutId(?array $object): string
+    {
+        if ($object === null) {
+            return '';
+        }
+
+        foreach (['id', 'payout_id', 'cajupay_payout_id'] as $key) {
+            $value = $object[$key] ?? null;
+            if (is_string($value) && $value !== '') {
+                return $value;
+            }
+        }
+
+        return '';
     }
 
     /**
@@ -215,6 +365,25 @@ class CajuPayWebhookController extends Controller
                 ->first();
             if ($order) {
                 return $order;
+            }
+
+            $order = Order::where('gateway', self::SLUG)
+                ->where('metadata->cajupay_parcelado_first_payment_id', $paymentId)
+                ->first();
+            if ($order) {
+                return $order;
+            }
+        }
+
+        if (is_array($object)) {
+            $planId = $object['plan_id'] ?? ($object['id'] ?? null);
+            if (is_string($planId) && $planId !== '') {
+                $order = Order::where('gateway', self::SLUG)
+                    ->where('metadata->cajupay_parcelado_plan_id', $planId)
+                    ->first();
+                if ($order) {
+                    return $order;
+                }
             }
         }
 

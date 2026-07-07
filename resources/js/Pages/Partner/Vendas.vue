@@ -2,6 +2,8 @@
 import { ref, computed } from 'vue';
 import { router } from '@inertiajs/vue3';
 import LayoutInfoprodutor from '@/Layouts/LayoutInfoprodutor.vue';
+import { useInertiaPagination } from '@/composables/useInertiaPagination';
+import HorizontalScrollTabs from '@/components/ui/HorizontalScrollTabs.vue';
 import {
     Eye,
     EyeOff,
@@ -26,6 +28,17 @@ const props = defineProps({
 
 const valuesVisible = ref(true);
 const vendasList = computed(() => props.vendas?.data ?? []);
+
+const {
+    paginationPrev,
+    paginationNext,
+    paginationPages,
+    paginationSummary,
+    hasPagination,
+    isEllipsisLink,
+    visitPaginationPage,
+    paginationLinkClass,
+} = useInertiaPagination(() => props.vendas);
 
 const filterOptions = [
     { value: 'aprovadas', label: 'Aprovadas' },
@@ -77,11 +90,11 @@ function buildQuery() {
 }
 
 function applyFilters() {
-    router.get('/parceiro/vendas', buildQuery(), { preserveState: true, replace: true });
+    router.get('/parceiro/vendas', buildQuery(), { preserveState: false, replace: true });
 }
 
 function setStatusFilter(value) {
-    router.get('/parceiro/vendas', { ...buildQuery(), status_filter: value }, { preserveState: true });
+    router.get('/parceiro/vendas', { ...buildQuery(), status_filter: value }, { preserveState: false });
 }
 
 function onSearchInput() {
@@ -141,22 +154,6 @@ function commissionStatusLabel(status) {
     if (status === 'paid') return 'Comissão paga';
     return status || '';
 }
-
-const paginationPrev = computed(() => props.vendas?.links?.[0] ?? null);
-const paginationNext = computed(() => {
-    const links = props.vendas?.links ?? [];
-    return links.length > 1 ? links[links.length - 1] : null;
-});
-const paginationPages = computed(() => {
-    const links = props.vendas?.links ?? [];
-    if (links.length <= 2) return [];
-    return links.slice(1, -1);
-});
-
-function visitPaginationPage(url) {
-    if (!url) return;
-    router.visit(url, { preserveState: true });
-}
 </script>
 
 <template>
@@ -197,7 +194,7 @@ function visitPaginationPage(url) {
             </div>
         </div>
 
-        <nav class="inline-flex rounded-xl bg-zinc-100/80 p-1 dark:bg-zinc-800/80" aria-label="Filtrar vendas">
+        <HorizontalScrollTabs aria-label="Filtrar vendas">
             <button
                 v-for="opt in filterOptions"
                 :key="opt.value"
@@ -212,7 +209,7 @@ function visitPaginationPage(url) {
             >
                 {{ opt.label }}
             </button>
-        </nav>
+        </HorizontalScrollTabs>
 
         <div class="flex flex-wrap items-end gap-3">
             <div class="relative min-w-[200px] flex-1 max-w-xl">
@@ -319,33 +316,54 @@ function visitPaginationPage(url) {
             <p v-if="!vendasList.length" class="px-4 py-12 text-center text-sm text-zinc-500">Nenhuma venda encontrada.</p>
         </div>
 
-        <div v-if="vendas?.links?.length > 3" class="flex items-center justify-center gap-1">
+        <nav
+            v-if="hasPagination"
+            class="relative z-10 flex w-full items-center gap-2 py-2"
+            aria-label="Paginação"
+        >
             <button
                 type="button"
                 :disabled="!paginationPrev?.url"
-                class="inline-flex h-9 w-9 items-center justify-center rounded-lg border text-sm disabled:opacity-40"
+                :class="paginationLinkClass(paginationPrev, { iconOnly: true })"
+                aria-label="Página anterior"
                 @click="visitPaginationPage(paginationPrev?.url)"
             >
-                <ChevronLeft class="h-4 w-4" />
+                <ChevronLeft class="h-5 w-5" aria-hidden="true" />
             </button>
-            <button
-                v-for="(link, i) in paginationPages"
-                :key="i"
-                type="button"
-                :disabled="!link.url"
-                class="min-w-9 rounded-lg px-3 py-2 text-sm"
-                :class="link.active ? 'bg-[var(--color-primary)] text-white' : 'hover:bg-zinc-100 dark:hover:bg-zinc-800'"
-                @click="visitPaginationPage(link.url)"
-                v-html="link.label"
-            />
+
+            <span class="min-w-0 flex-1 text-center text-sm font-medium text-zinc-600 dark:text-zinc-400 sm:hidden">
+                {{ paginationSummary }}
+            </span>
+
+            <div class="hidden min-w-0 flex-1 items-center justify-center gap-1 overflow-x-auto no-scrollbar sm:flex">
+                <template v-for="(link, index) in paginationPages" :key="`page-${index}-${link.label}`">
+                    <span
+                        v-if="isEllipsisLink(link)"
+                        class="inline-flex min-w-9 items-center justify-center px-2 py-2 text-sm text-zinc-400 dark:text-zinc-500"
+                        aria-hidden="true"
+                    >…</span>
+                    <button
+                        v-else
+                        type="button"
+                        :disabled="!link.url"
+                        :aria-current="link.active ? 'page' : undefined"
+                        :class="paginationLinkClass(link)"
+                        @click="visitPaginationPage(link.url)"
+                    >
+                        {{ link.label }}
+                    </button>
+                </template>
+            </div>
+
             <button
                 type="button"
                 :disabled="!paginationNext?.url"
-                class="inline-flex h-9 w-9 items-center justify-center rounded-lg border text-sm disabled:opacity-40"
+                :class="paginationLinkClass(paginationNext, { iconOnly: true })"
+                aria-label="Próxima página"
                 @click="visitPaginationPage(paginationNext?.url)"
             >
-                <ChevronRight class="h-4 w-4" />
+                <ChevronRight class="h-5 w-5" aria-hidden="true" />
             </button>
-        </div>
+        </nav>
     </div>
 </template>

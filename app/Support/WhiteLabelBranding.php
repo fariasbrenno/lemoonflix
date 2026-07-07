@@ -113,7 +113,9 @@ class WhiteLabelBranding
             $globalData = is_array($global?->data) ? $global->data : [];
             $tenantData = is_array($tenant?->data) ? $tenant->data : [];
 
-            if (class_exists(\Plugins\WhiteLabel\ApplyWhiteLabelConfig::class)) {
+            if ($tenantId === null && class_exists(\Plugins\WhiteLabel\ApplyWhiteLabelConfig::class)) {
+                $branding = \Plugins\WhiteLabel\ApplyWhiteLabelConfig::publicEffectiveData();
+            } elseif (class_exists(\Plugins\WhiteLabel\ApplyWhiteLabelConfig::class)) {
                 $branding = \Plugins\WhiteLabel\ApplyWhiteLabelConfig::mergeLayers($globalData, $tenantData);
             } else {
                 $branding = array_merge($globalData, array_filter(

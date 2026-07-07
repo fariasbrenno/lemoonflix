@@ -7,6 +7,7 @@ use App\Gateways\CajuPay\CajuPayDriver;
 use App\Models\GatewayCredential;
 use App\Models\GatewayFeeSetting;
 use App\Models\Setting;
+use App\Services\CajuPayPixParceladoService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -153,6 +154,21 @@ class GatewaysController extends Controller
             'oauth_connected' => $oauthConnected,
         ];
 
+        if ($slug === 'cajupay' && ($credential?->is_connected ?? false)) {
+            $parceladoService = app(\App\Services\CajuPayPixParceladoService::class);
+            $creds = $decrypted;
+            try {
+                $payload['pix_parcelado_enrollment'] = $parceladoService->enrollmentStatus($creds);
+                $payload['pix_parcelado_enrolled'] = $parceladoService->isEnrolled($creds);
+            } catch (\Throwable $e) {
+                $payload['pix_parcelado_enrollment'] = ['status' => 'unknown', 'message' => $e->getMessage()];
+                $payload['pix_parcelado_enrolled'] = false;
+            }
+            $payload['pix_parcelado_accept_url'] = Route::has('gateways.cajupay.parcelado.accept')
+                ? route('gateways.cajupay.parcelado.accept')
+                : null;
+        }
+
         return response()->json($payload)->header('Cache-Control', 'no-store, no-cache, must-revalidate');
     }
 
@@ -284,6 +300,7 @@ class GatewaysController extends Controller
         $webhookWarning = null;
         if ($slug === 'cajupay' && $isConnected && $driver instanceof CajuPayDriver) {
             $credentials = $this->ensureCajuPayWebhookRegistered($driver, $credentials, $webhookWarning);
+            $credentials = $this->syncCajuPayParceladoMetadata($credentials, $tenantId);
         }
 
         $credential->is_connected = $isConnected;
@@ -502,6 +519,68 @@ class GatewaysController extends Controller
                 : ($warning ?? 'Não foi possível obter um novo token do webhook.'),
             'webhook_warning' => $warning,
         ], $meta), $hasSecret ? 200 : 422);
+    }
+
+    public function acceptCajuPayPixParceladoEnrollment(Request $request): JsonResponse
+    {
+        $tenantId = auth()->user()->tenant_id;
+        $credential = GatewayCredential::forTenant($tenantId)->where('gateway_slug', 'cajupay')->where('is_connected', true)->first();
+        if ($credential === null) {
+            return response()->json(['success' => false, 'message' => 'Conecte a CajuPay antes de aceitar o contrato PIX Parcelado.'], 422);
+        }
+
+        $credentials = $credential->getDecryptedCredentials();
+        $driver = GatewayRegistry::driver('cajupay');
+        if (! $driver instanceof CajuPayDriver) {
+            return response()->json(['success' => false, 'message' => 'Driver CajuPay indisponível.'], 422);
+        }
+
+        try {
+            $result = $driver->acceptPixParceladoEnrollment($credentials);
+            $status = strtolower(trim((string) ($result['status'] ?? 'active')));
+            $credentials['pix_parcelado_enrollment_status'] = $status;
+            $credentials = $this->syncCajuPayParceladoMetadata($credentials, $tenantId);
+            $credential->setEncryptedCredentials($credentials);
+            $credential->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Contrato PIX Parcelado aceito.',
+                'pix_parcelado_enrollment' => $result,
+                'pix_parcelado_enrolled' => $status === 'active',
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage() ?: 'Não foi possível aceitar o contrato PIX Parcelado.',
+            ], 422);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $credentials
+     * @return array<string, mixed>
+     */
+    private function syncCajuPayParceladoMetadata(array $credentials, ?int $tenantId): array
+    {
+        $parceladoService = app(CajuPayPixParceladoService::class);
+
+        try {
+            $enrollment = $parceladoService->enrollmentStatus($credentials);
+            $status = strtolower(trim((string) ($enrollment['status'] ?? '')));
+            if ($status !== '') {
+                $credentials['pix_parcelado_enrollment_status'] = $status;
+            }
+        } catch (\Throwable) {
+            // Mantém status já gravado.
+        }
+
+        $payAccountId = $parceladoService->resolvePayAccountId($credentials);
+        if ($payAccountId !== null && $payAccountId !== '') {
+            $credentials['pay_account_id'] = $payAccountId;
+        }
+
+        return $credentials;
     }
 
     /**

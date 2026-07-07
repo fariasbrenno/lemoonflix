@@ -5,10 +5,12 @@ import { useSidebar } from '@/composables/useSidebar';
 import LayoutInfoprodutor from '@/Layouts/LayoutInfoprodutor.vue';
 import Button from '@/components/ui/Button.vue';
 import BetaBadge from '@/components/ui/BetaBadge.vue';
+import HorizontalScrollTabs from '@/components/ui/HorizontalScrollTabs.vue';
 import Toggle from '@/components/ui/Toggle.vue';
 import Checkbox from '@/components/ui/Checkbox.vue';
 import GatewaySelect from '@/components/ui/GatewaySelect.vue';
 import GatewayRedundancySidebar from '@/components/produtos/GatewayRedundancySidebar.vue';
+import PixParceladoRulesSidebar from '@/components/produtos/PixParceladoRulesSidebar.vue';
 import ProductCoproducaoTab from '@/components/produtos/ProductCoproducaoTab.vue';
 import ProductAfiliadosTab from '@/components/produtos/ProductAfiliadosTab.vue';
 import PluginSlotHost from '@/components/plugins/PluginSlotHost.vue';
@@ -37,6 +39,7 @@ import {
     Trash2,
     Layers,
     MapPin,
+    SlidersHorizontal,
     ChevronDown,
     RotateCcw,
 } from 'lucide-vue-next';
@@ -98,10 +101,139 @@ const DEFAULT_CART_RECOVERY_EMAIL = {
     },
 };
 
+const DEFAULT_SMS_CONFIG = {
+    access_delivery: {
+        enabled: false,
+        body_text: 'Ola {nome_cliente}! Seu acesso a {nome_produto}: {link_acesso}',
+    },
+    pix_generated: {
+        enabled: false,
+        body_text: 'PIX de {nome_produto} ({valor}). Pague: {link_pix}',
+    },
+    cart_recovery: {
+        enabled: false,
+        deadline_hours: 48,
+        stages: [
+            { delay_minutes: 10, body_text: 'Ola {nome_cliente}! Retome {nome_produto}: {link_checkout}' },
+            { delay_minutes: 300, body_text: '{nome_cliente}, ainda da tempo: {link_checkout}' },
+            { delay_minutes: 1440, body_text: 'Ultimo lembrete {nome_produto}: {link_checkout}' },
+        ],
+    },
+};
+
+const SMS_MAX_LENGTH = 160;
+
+const SMS_DELAY_UNIT_OPTIONS = [
+    { id: 'minutes', label: 'minutos', singular: 'minuto' },
+    { id: 'hours', label: 'horas', singular: 'hora' },
+    { id: 'days', label: 'dias', singular: 'dia' },
+];
+
+const SMS_DELAY_PRESETS = [
+    { label: '10 min', minutes: 10 },
+    { label: '30 min', minutes: 30 },
+    { label: '1 hora', minutes: 60 },
+    { label: '5 horas', minutes: 300 },
+    { label: '24 horas', minutes: 1440 },
+    { label: '2 dias', minutes: 2880 },
+];
+
+const SMS_DEADLINE_OPTIONS = [
+    { label: '1 dia', hours: 24 },
+    { label: '2 dias', hours: 48 },
+    { label: '3 dias', hours: 72 },
+    { label: '5 dias', hours: 120 },
+    { label: '7 dias', hours: 168 },
+];
+
+function parseSmsDelayUnit(minutes) {
+    const m = Math.max(1, Math.round(Number(minutes) || 10));
+    if (m >= 1440 && m % 1440 === 0) {
+        return { value: m / 1440, unit: 'days' };
+    }
+    if (m >= 60 && m % 60 === 0) {
+        return { value: m / 60, unit: 'hours' };
+    }
+
+    return { value: m, unit: 'minutes' };
+}
+
+function smsDelayToMinutes(value, unit) {
+    const v = Math.max(1, Math.round(Number(value) || 1));
+    if (unit === 'days') {
+        return v * 1440;
+    }
+    if (unit === 'hours') {
+        return v * 60;
+    }
+
+    return v;
+}
+
+function normalizeSmsStage(stage) {
+    const minutes = Math.max(1, Number(stage?.delay_minutes ?? 10));
+    const { value, unit } = parseSmsDelayUnit(minutes);
+
+    return {
+        delay_minutes: minutes,
+        delay_value: value,
+        delay_unit: unit,
+        body_text: String(stage?.body_text ?? ''),
+    };
+}
+
+function syncStageDelayMinutes(stageIndex) {
+    const stage = form.sms.cart_recovery.stages?.[stageIndex];
+    if (!stage || typeof stage !== 'object') {
+        return;
+    }
+    const delay_minutes = smsDelayToMinutes(stage.delay_value, stage.delay_unit);
+    form.sms.cart_recovery.stages[stageIndex] = {
+        ...stage,
+        delay_minutes,
+    };
+}
+
+function applySmsDelayPreset(stageIndex, minutes) {
+    const stage = form.sms.cart_recovery.stages?.[stageIndex];
+    if (!stage || typeof stage !== 'object') {
+        return;
+    }
+    const { value, unit } = parseSmsDelayUnit(minutes);
+    form.sms.cart_recovery.stages[stageIndex] = {
+        ...stage,
+        delay_value: value,
+        delay_unit: unit,
+        delay_minutes: minutes,
+    };
+}
+
+function setSmsDeadlineHours(rawHours) {
+    const hours = Math.min(168, Math.max(1, parseInt(rawHours, 10) || 48));
+    form.sms.cart_recovery = {
+        ...form.sms.cart_recovery,
+        deadline_hours: hours,
+    };
+}
+
+function isSmsDelayPresetActive(stage, minutes) {
+    return Number(stage?.delay_minutes) === Number(minutes);
+}
+
+function formatSmsDelaySummary(stage) {
+    const v = Math.max(1, Math.round(Number(stage?.delay_value) || 1));
+    const unit = stage?.delay_unit || 'minutes';
+    const opt = SMS_DELAY_UNIT_OPTIONS.find((o) => o.id === unit) || SMS_DELAY_UNIT_OPTIONS[0];
+    const word = v === 1 ? opt.singular : opt.label;
+
+    return `Enviar ${v} ${word} após o abandono`;
+}
+
 const BASE_TABS = [
     { id: 'geral', label: 'Geral', icon: LayoutDashboard },
     { id: 'configuracoes', label: 'Configurações', icon: Settings },
     { id: 'email', label: 'E-mail', icon: Mail },
+    { id: 'sms', label: 'SMS', icon: Smartphone },
     { id: 'order_bump', label: 'Order Bump', icon: Package },
     { id: 'upsell_downsell', label: 'Upsell / Downsell', icon: ArrowUpDown },
     { id: 'checkout', label: 'Checkout', icon: ShoppingCart },
@@ -121,8 +253,9 @@ const props = defineProps({
     product_pixel_integrations: { type: Array, default: () => [] },
     gateways_by_method: {
         type: Object,
-        default: () => ({ pix: [], card: [], boleto: [], pix_auto: [], apple_pay: [], google_pay: [], crypto: [] }),
+        default: () => ({ pix: [], card: [], boleto: [], pix_auto: [], apple_pay: [], google_pay: [], pix_parcelado: [], crypto: [] }),
     },
+    cajupay_parcelado_enrollment: { type: Object, default: null },
     plugin_product_panels: { type: Array, default: () => [] },
     plugin_form_sections: { type: Array, default: () => [] },
     tenant_currencies: { type: Array, default: () => [] },
@@ -207,6 +340,16 @@ watch(currentTab, () => {
 const pg = props.produto.checkout_config?.payment_gateways ?? {};
 const et = props.produto.checkout_config?.email_template ?? {};
 const ci = props.produto.checkout_config?.card_installments ?? { enabled: false, max: 1 };
+const ppRaw = props.produto.checkout_config?.pix_parcelado ?? {};
+const pixParceladoInitial = {
+    max_installments: ppRaw.max_installments ?? null,
+    down_payment_cents: ppRaw.down_payment_cents ?? null,
+    min_down_payment_bps: ppRaw.min_down_payment_bps ?? null,
+    max_down_payment_bps: ppRaw.max_down_payment_bps ?? null,
+    early_payment_discount_bps: ppRaw.early_payment_discount_bps ?? 0,
+    payoff_discount_bps: ppRaw.payoff_discount_bps ?? 0,
+    overdue_payoff_discount_bps: ppRaw.overdue_payoff_discount_bps ?? 0,
+};
 const creRaw = props.produto.checkout_config?.cart_recovery_email;
 const cartRecoveryInitial = {
     ...DEFAULT_CART_RECOVERY_EMAIL,
@@ -214,6 +357,31 @@ const cartRecoveryInitial = {
     stages: {
         ...DEFAULT_CART_RECOVERY_EMAIL.stages,
         ...(creRaw?.stages && typeof creRaw.stages === 'object' ? creRaw.stages : {}),
+    },
+};
+const smsRaw = props.produto.checkout_config?.sms;
+const smsInitial = {
+    access_delivery: {
+        ...DEFAULT_SMS_CONFIG.access_delivery,
+        ...(smsRaw?.access_delivery && typeof smsRaw.access_delivery === 'object' ? smsRaw.access_delivery : {}),
+    },
+    pix_generated: {
+        ...DEFAULT_SMS_CONFIG.pix_generated,
+        ...(smsRaw?.pix_generated && typeof smsRaw.pix_generated === 'object' ? smsRaw.pix_generated : {}),
+    },
+    cart_recovery: {
+        ...DEFAULT_SMS_CONFIG.cart_recovery,
+        ...(smsRaw?.cart_recovery && typeof smsRaw.cart_recovery === 'object' ? smsRaw.cart_recovery : {}),
+        deadline_hours: Math.min(
+            168,
+            Math.max(
+                1,
+                parseInt(smsRaw?.cart_recovery?.deadline_hours, 10) || DEFAULT_SMS_CONFIG.cart_recovery.deadline_hours || 48,
+            ),
+        ),
+        stages: Array.isArray(smsRaw?.cart_recovery?.stages) && smsRaw.cart_recovery.stages.length > 0
+            ? smsRaw.cart_recovery.stages.map((s) => normalizeSmsStage(s))
+            : DEFAULT_SMS_CONFIG.cart_recovery.stages.map((s) => normalizeSmsStage(s)),
     },
 };
 const PAGARME_BILLING_DEFAULT = {
@@ -318,7 +486,10 @@ const form = useForm({
         google_pay_redundancy: Array.isArray(pg.google_pay_redundancy) ? pg.google_pay_redundancy : [],
         crypto: pg.crypto ?? '',
         crypto_redundancy: Array.isArray(pg.crypto_redundancy) ? pg.crypto_redundancy : [],
+        pix_parcelado: pg.pix_parcelado ?? '',
+        pix_parcelado_redundancy: Array.isArray(pg.pix_parcelado_redundancy) ? pg.pix_parcelado_redundancy : [],
     },
+    pix_parcelado: { ...pixParceladoInitial },
     card_installments: {
         enabled: Boolean(ci.enabled),
         max: Math.min(12, Math.max(1, parseInt(ci.max, 10) || 1)),
@@ -331,6 +502,7 @@ const form = useForm({
         body_text: et.body_text ?? DEFAULT_EMAIL_TEMPLATE.body_text,
     },
     cart_recovery_email: cartRecoveryInitial,
+    sms: smsInitial,
     pagarme_billing: pagarmeBillingInitial,
     checkout_force: { ...checkoutForceInitial },
     checkout_currency: { ...checkoutCurrencyInitial },
@@ -342,10 +514,102 @@ const form = useForm({
 });
 
 const priceNum = computed(() => parseFloat(form.price) || 0);
+
+function smsTextLength(text) {
+    return String(text ?? '').length;
+}
+
+function smsFieldOverLimit(text, enabled = true) {
+    if (!enabled) {
+        return false;
+    }
+    return smsTextLength(text) > SMS_MAX_LENGTH;
+}
+
+const smsValidationError = computed(() => {
+    const sms = form.sms;
+    if (!sms || typeof sms !== 'object') {
+        return null;
+    }
+    if (smsFieldOverLimit(sms.access_delivery?.body_text, sms.access_delivery?.enabled)) {
+        return 'O texto de envio de acesso excede 160 caracteres.';
+    }
+    if (smsFieldOverLimit(sms.pix_generated?.body_text, sms.pix_generated?.enabled)) {
+        return 'O texto de PIX gerado excede 160 caracteres.';
+    }
+    if (sms.cart_recovery?.enabled && Array.isArray(sms.cart_recovery.stages)) {
+        for (let i = 0; i < sms.cart_recovery.stages.length; i++) {
+            if (smsFieldOverLimit(sms.cart_recovery.stages[i]?.body_text, true)) {
+                return `A etapa ${i + 1} de recuperação de carrinho excede 160 caracteres.`;
+            }
+        }
+    }
+    return null;
+});
+
+const smsDeadlineOptions = computed(() => {
+    const current = Math.min(168, Math.max(1, parseInt(form.sms?.cart_recovery?.deadline_hours, 10) || 48));
+    const options = [...SMS_DEADLINE_OPTIONS];
+    if (!options.some((o) => o.hours === current)) {
+        options.push({ label: `${current} horas`, hours: current });
+        options.sort((a, b) => a.hours - b.hours);
+    }
+
+    return options;
+});
+
+function addSmsRecoveryStage() {
+    const stages = Array.isArray(form.sms.cart_recovery.stages) ? form.sms.cart_recovery.stages : [];
+    form.sms.cart_recovery.stages = [
+        ...stages,
+        normalizeSmsStage({
+            delay_minutes: 60,
+            body_text: 'Retome sua compra: {link_checkout}',
+        }),
+    ];
+}
+
+function removeSmsRecoveryStage(index) {
+    if (!Array.isArray(form.sms.cart_recovery.stages)) {
+        return;
+    }
+    if (form.sms.cart_recovery.stages.length <= 1) {
+        return;
+    }
+    form.sms.cart_recovery.stages.splice(index, 1);
+}
+
+function buildSmsPayload() {
+    const sms = form.sms && typeof form.sms === 'object' ? form.sms : {};
+    const stages = Array.isArray(sms.cart_recovery?.stages) ? sms.cart_recovery.stages : [];
+    return {
+        access_delivery: {
+            enabled: !!sms.access_delivery?.enabled,
+            body_text: String(sms.access_delivery?.body_text ?? ''),
+        },
+        pix_generated: {
+            enabled: !!sms.pix_generated?.enabled,
+            body_text: String(sms.pix_generated?.body_text ?? ''),
+        },
+        cart_recovery: {
+            enabled: !!sms.cart_recovery?.enabled,
+            deadline_hours: Math.min(168, Math.max(1, parseInt(sms.cart_recovery?.deadline_hours, 10) || 48)),
+            stages: stages.map((s) => {
+                const minutes = smsDelayToMinutes(s.delay_value, s.delay_unit);
+
+                return {
+                    delay_minutes: minutes,
+                    body_text: String(s?.body_text ?? ''),
+                };
+            }),
+        },
+    };
+}
+
 const priceEur = computed(() => (priceNum.value * (props.exchange_rates.brl_eur ?? 0.16)).toFixed(2));
 const priceUsd = computed(() => (priceNum.value * (props.exchange_rates.brl_usd ?? 0.18)).toFixed(2));
 
-/** Valor mínimo por parcela (R$) para Efí/Asaas — parcelas abaixo disso costumam ser recusadas. */
+/** Valor mínimo por parcela (R$) para Efí, Asaas e Pagar.me — parcelas abaixo disso costumam ser recusadas. */
 const MIN_PARCELA_BRL = 5;
 /** Máximo de parcelas permitido pelo preço atual (1–12). */
 const maxAllowedInstallments = computed(() => {
@@ -1113,7 +1377,15 @@ function gatewayOptions(method) {
 
 const redundancySidebarOpen = ref(false);
 const redundancySidebarMethod = ref(null);
-const METHOD_LABELS = { pix: 'PIX', card: 'Cartão', boleto: 'Boleto', pix_auto: 'PIX automático', apple_pay: 'Apple Pay', google_pay: 'Google Pay', crypto: 'Criptomoeda' };
+const METHOD_LABELS = { pix: 'PIX', card: 'Cartão', boleto: 'Boleto', pix_auto: 'PIX automático', apple_pay: 'Apple Pay', google_pay: 'Google Pay', pix_parcelado: 'PIX Parcelado', crypto: 'Criptomoeda' };
+const pixParceladoRulesSidebarOpen = ref(false);
+const cajupayParceladoEnrollmentStatus = computed(() => {
+    const s = String(props.cajupay_parcelado_enrollment?.status || '').toLowerCase();
+    return s || 'unknown';
+});
+const cajupayParceladoNotEnrolled = computed(() => {
+    return form.payment_gateways.pix_parcelado === 'cajupay' && cajupayParceladoEnrollmentStatus.value !== 'active';
+});
 function openRedundancySidebar(method) {
     redundancySidebarMethod.value = method;
     redundancySidebarOpen.value = true;
@@ -1126,6 +1398,18 @@ function canShowRedundancy(slug) {
 const BR_BILLING_GATEWAY_SLUGS = ['pagarme', 'efi'];
 function isBrBillingGateway(slug) {
     return BR_BILLING_GATEWAY_SLUGS.includes(String(slug || '').toLowerCase());
+}
+
+const CARD_INSTALLMENT_GATEWAY_SLUGS = ['efi', 'asaas', 'pagarme'];
+function supportsCardInstallments(slug) {
+    return CARD_INSTALLMENT_GATEWAY_SLUGS.includes(String(slug || '').toLowerCase());
+}
+function cardInstallmentsGatewayLabel(slug) {
+    const s = String(slug || '').toLowerCase();
+    if (s === 'efi') return 'Efí';
+    if (s === 'asaas') return 'Asaas';
+    if (s === 'pagarme') return 'Pagar.me';
+    return 'cartão';
 }
 
 function onPagarmeCompanyCepInput(e) {
@@ -1171,6 +1455,9 @@ const typeIcons = {
 };
 
 function submit() {
+    if (smsValidationError.value) {
+        return;
+    }
     const baseUrl = `/produtos/${props.produto.id}`;
     const tab = currentTab.value && currentTab.value !== 'geral' ? `?tab=${currentTab.value}` : '';
     const url = baseUrl + tab;
@@ -1212,6 +1499,7 @@ function submit() {
             },
         };
         fd.append('cart_recovery_email', JSON.stringify(crePayload));
+        fd.append('sms', JSON.stringify(buildSmsPayload()));
         if (form.payment_gateways) {
             fd.append('payment_gateways[pix]', form.payment_gateways.pix || '');
             (form.payment_gateways.pix_redundancy || []).forEach((s) => fd.append('payment_gateways[pix_redundancy][]', s));
@@ -1225,6 +1513,10 @@ function submit() {
             (form.payment_gateways.google_pay_redundancy || []).forEach((s) => fd.append('payment_gateways[google_pay_redundancy][]', s));
             fd.append('payment_gateways[crypto]', form.payment_gateways.crypto || '');
             (form.payment_gateways.crypto_redundancy || []).forEach((s) => fd.append('payment_gateways[crypto_redundancy][]', s));
+            if (form.billing_type === 'one_time') {
+                fd.append('payment_gateways[pix_parcelado]', form.payment_gateways.pix_parcelado || '');
+                (form.payment_gateways.pix_parcelado_redundancy || []).forEach((s) => fd.append('payment_gateways[pix_parcelado_redundancy][]', s));
+            }
             if (form.billing_type === 'subscription') {
                 fd.append('payment_gateways[pix_auto]', form.payment_gateways.pix_auto || '');
                 (form.payment_gateways.pix_auto_redundancy || []).forEach((s) => fd.append('payment_gateways[pix_auto_redundancy][]', s));
@@ -1233,6 +1525,24 @@ function submit() {
         if (form.card_installments) {
             fd.append('card_installments[enabled]', form.card_installments.enabled ? '1' : '0');
             fd.append('card_installments[max]', String(Math.min(12, Math.max(1, form.card_installments.max || 1))));
+        }
+        if (form.payment_gateways.pix_parcelado === 'cajupay' && form.pix_parcelado) {
+            const pp = form.pix_parcelado;
+            if (pp.max_installments != null && pp.max_installments !== '') {
+                fd.append('pix_parcelado[max_installments]', String(pp.max_installments));
+            }
+            if (pp.down_payment_cents != null && pp.down_payment_cents !== '') {
+                fd.append('pix_parcelado[down_payment_cents]', String(pp.down_payment_cents));
+            }
+            if (pp.min_down_payment_bps != null && pp.min_down_payment_bps !== '') {
+                fd.append('pix_parcelado[min_down_payment_bps]', String(pp.min_down_payment_bps));
+            }
+            if (pp.max_down_payment_bps != null && pp.max_down_payment_bps !== '') {
+                fd.append('pix_parcelado[max_down_payment_bps]', String(pp.max_down_payment_bps));
+            }
+            fd.append('pix_parcelado[early_payment_discount_bps]', String(pp.early_payment_discount_bps ?? 0));
+            fd.append('pix_parcelado[payoff_discount_bps]', String(pp.payoff_discount_bps ?? 0));
+            fd.append('pix_parcelado[overdue_payoff_discount_bps]', String(pp.overdue_payoff_discount_bps ?? 0));
         }
         if (typeof form.stripe_link_enabled === 'boolean') {
             fd.append('stripe_link_enabled', form.stripe_link_enabled ? '1' : '0');
@@ -1293,6 +1603,7 @@ function submit() {
             } else {
                 delete data.subscription;
             }
+            data.sms = buildSmsPayload();
             return data;
         }).put(url);
     }
@@ -1300,7 +1611,7 @@ function submit() {
 </script>
 
 <template>
-    <div class="flex flex-col lg:flex-row lg:gap-6 space-y-6 lg:space-y-0 lg:pl-2">
+    <div class="flex min-w-0 flex-col space-y-6 lg:flex-row lg:gap-6 lg:space-y-0 lg:pl-2">
         <!-- Desktop: sidebar vertical de abas (alinhado à esquerda junto ao sidebar principal) -->
         <aside
             class="hidden lg:flex lg:flex-col w-56 shrink-0 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 p-2"
@@ -1343,16 +1654,17 @@ function submit() {
         </aside>
 
         <!-- Mobile: abas em carrossel horizontal -->
-        <nav
-            class="flex gap-2 overflow-x-auto pb-2 snap-x snap-mandatory no-scrollbar lg:hidden rounded-xl bg-zinc-100/80 p-1 dark:bg-zinc-800/80"
+        <HorizontalScrollTabs
             aria-label="Abas de edição do produto"
+            wrapper-class="pb-2 lg:hidden"
+            nav-class="gap-2 snap-x snap-mandatory rounded-xl bg-zinc-100/80 p-1 dark:bg-zinc-800/80"
         >
             <template v-for="tab in TABS" :key="tab.id">
                 <a
                     v-if="tab.linkOnly && tab.id === 'member_builder' && produto.type === 'area_membros'"
                     :href="`/produtos/${produto.id}/member-builder`"
                     :class="[
-                        'flex shrink-0 snap-center items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200',
+                        'flex snap-center items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200',
                         'text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white',
                     ]"
                     @click.prevent="goToMemberBuilder"
@@ -1365,7 +1677,7 @@ function submit() {
                     type="button"
                     :ref="currentTab === tab.id ? activeTabRef : undefined"
                     :class="[
-                        'flex shrink-0 snap-center items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200',
+                        'flex snap-center items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200',
                         currentTab === tab.id
                             ? 'bg-white text-[var(--color-primary)] shadow-sm dark:bg-zinc-700 dark:text-[var(--color-primary)]'
                             : 'text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white',
@@ -1380,7 +1692,7 @@ function submit() {
                     </span>
                 </button>
             </template>
-        </nav>
+        </HorizontalScrollTabs>
 
         <!-- Conteúdo da aba -->
         <div class="flex-1 min-w-0 space-y-6">
@@ -2007,6 +2319,56 @@ function submit() {
                                     </p>
                                 </div>
                             </div>
+                            <!-- PIX Parcelado (somente pagamento único) -->
+                            <div
+                                v-if="form.billing_type === 'one_time'"
+                                class="panel-card-md"
+                            >
+                                <div class="flex flex-col gap-3">
+                                    <div class="flex items-center gap-3">
+                                        <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white p-2 shadow-sm dark:bg-zinc-700/50">
+                                            <img src="/images/payment-methods/pix.svg" alt="PIX Parcelado" class="h-7 w-7 object-contain" />
+                                        </div>
+                                        <div>
+                                            <p class="font-semibold text-zinc-900 dark:text-white">PIX Parcelado</p>
+                                            <p class="text-xs text-zinc-500 dark:text-zinc-400">Entrada + parcelas (CajuPay)</p>
+                                            <span class="mt-1 inline-flex rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">BRL · pagamento único</span>
+                                        </div>
+                                    </div>
+                                    <GatewaySelect
+                                        v-model="form.payment_gateways.pix_parcelado"
+                                        :options="gatewayOptions('pix_parcelado')"
+                                        placeholder="Nenhum"
+                                        label="Gateway PIX Parcelado"
+                                    />
+                                    <button
+                                        v-if="form.payment_gateways.pix_parcelado === 'cajupay'"
+                                        type="button"
+                                        class="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 hover:text-[var(--color-primary)] dark:border-zinc-600 dark:text-zinc-300"
+                                        @click="pixParceladoRulesSidebarOpen = true"
+                                    >
+                                        <SlidersHorizontal class="h-4 w-4" />
+                                        Definir regras
+                                    </button>
+                                    <button
+                                        v-if="canShowRedundancy(form.payment_gateways.pix_parcelado)"
+                                        type="button"
+                                        class="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 hover:text-[var(--color-primary)] dark:border-zinc-600 dark:text-zinc-300"
+                                        @click="openRedundancySidebar('pix_parcelado')"
+                                    >
+                                        <Layers class="h-4 w-4" />
+                                        Redundância
+                                    </button>
+                                    <p v-if="cajupayParceladoNotEnrolled" class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                                        Aceite o contrato PIX Parcelado na
+                                        <Link href="/integracoes?tab=gateways&gateway=cajupay" class="font-medium underline">configuração CajuPay</Link>
+                                        antes de usar no checkout.
+                                    </p>
+                                    <p v-if="(gateways_by_method.pix_parcelado || []).length === 0" class="text-xs text-zinc-500 dark:text-zinc-400">
+                                        <Link href="/integracoes?tab=gateways" class="text-[var(--color-primary)] hover:underline">Conectar CajuPay</Link>
+                                    </p>
+                                </div>
+                            </div>
                             <!-- Cartão -->
                             <div class="panel-card-md">
                                 <div class="flex flex-col gap-3">
@@ -2046,12 +2408,12 @@ function submit() {
                                     <p v-if="gateways_by_method.card.length === 0" class="text-xs text-zinc-500 dark:text-zinc-400">
                                         <Link href="/integracoes?tab=gateways" class="text-[var(--color-primary)] hover:underline">Conectar gateway</Link>
                                     </p>
-                                    <template v-if="form.payment_gateways.card === 'efi' || form.payment_gateways.card === 'asaas'">
+                                    <template v-if="supportsCardInstallments(form.payment_gateways.card)">
                                         <div class="mt-3 space-y-3 border-t border-zinc-200/80 pt-3 dark:border-zinc-600/80">
                                             <div class="flex items-center justify-between rounded-xl border border-zinc-100 bg-white px-4 py-3 dark:border-zinc-700 dark:bg-zinc-800/50">
                                                 <div class="min-w-0">
                                                     <p class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Permitir parcelamento</p>
-                                                    <p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">Cliente poderá parcelar no cartão de crédito ({{ form.payment_gateways.card === 'efi' ? 'Efí' : 'Asaas' }})</p>
+                                                    <p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">Cliente poderá parcelar no cartão de crédito ({{ cardInstallmentsGatewayLabel(form.payment_gateways.card) }})</p>
                                                 </div>
                                                 <Toggle v-model="form.card_installments.enabled" class="shrink-0" />
                                             </div>
@@ -2527,6 +2889,15 @@ function submit() {
                     @close="redundancySidebarOpen = false"
                 />
 
+                <PixParceladoRulesSidebar
+                    :open="pixParceladoRulesSidebarOpen"
+                    :product-id="produto.id"
+                    :price-brl="priceNum"
+                    v-model="form.pix_parcelado"
+                    @close="pixParceladoRulesSidebarOpen = false"
+                    @save="() => { pixParceladoRulesSidebarOpen = false; }"
+                />
+
                 <Teleport to="body">
                     <Transition
                         enter-active-class="transition-opacity duration-200"
@@ -2834,6 +3205,234 @@ function submit() {
                 </div>
                 <div class="flex flex-wrap items-center gap-3">
                     <Button type="submit" :disabled="form.processing">Salvar alterações</Button>
+                    <Link
+                        href="/produtos"
+                        class="inline-flex items-center rounded-xl border border-zinc-200 px-4 py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                    >
+                        Cancelar
+                    </Link>
+                </div>
+            </form>
+        </template>
+
+        <!-- Aba SMS -->
+        <template v-if="currentTab === 'sms'">
+            <form class="w-full space-y-6" @submit.prevent="submit">
+                <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-100">
+                    Os SMS são enviados pela integração
+                    <Link href="/integracoes?tab=apps" class="font-medium text-[var(--color-primary)] underline">IntegraX</Link>
+                    (token ativo em Integrações). Mensagens limitadas a 160 caracteres.
+                </div>
+
+                <div v-if="smsValidationError" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800/50 dark:bg-red-950/30 dark:text-red-200">
+                    {{ smsValidationError }}
+                </div>
+
+                <section class="panel-table">
+                    <div class="border-b border-zinc-200/80 bg-gradient-to-r from-zinc-50/90 to-zinc-100/50 px-6 py-5 dark:from-zinc-800/80 dark:to-zinc-800/50">
+                        <div class="flex items-start justify-between gap-4">
+                            <div>
+                                <h2 class="text-base font-semibold text-zinc-900 dark:text-white">Envio de acesso</h2>
+                                <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">SMS após compra aprovada com link de acesso.</p>
+                            </div>
+                            <Toggle v-model="form.sms.access_delivery.enabled" />
+                        </div>
+                    </div>
+                    <div class="p-6 space-y-3">
+                        <textarea
+                            v-model="form.sms.access_delivery.body_text"
+                            :disabled="!form.sms.access_delivery.enabled"
+                            rows="4"
+                            maxlength="200"
+                            :class="inputClass"
+                            placeholder="Ola {nome_cliente}! Seu acesso: {link_acesso}"
+                        />
+                        <p :class="['text-xs', smsFieldOverLimit(form.sms.access_delivery.body_text, form.sms.access_delivery.enabled) ? 'text-red-600' : 'text-zinc-500']">
+                            {{ smsTextLength(form.sms.access_delivery.body_text) }}/{{ SMS_MAX_LENGTH }} caracteres
+                        </p>
+                        <p class="text-xs text-zinc-500">
+                            Placeholders:
+                            <code class="rounded bg-zinc-100 px-1 dark:bg-zinc-700">{nome_cliente}</code>,
+                            <code class="rounded bg-zinc-100 px-1 dark:bg-zinc-700">{nome_produto}</code>,
+                            <code class="rounded bg-zinc-100 px-1 dark:bg-zinc-700">{link_acesso}</code>,
+                            <code class="rounded bg-zinc-100 px-1 dark:bg-zinc-700">{senha}</code>,
+                            <code class="rounded bg-zinc-100 px-1 dark:bg-zinc-700">{email_cliente}</code>
+                        </p>
+                    </div>
+                </section>
+
+                <section class="panel-table">
+                    <div class="border-b border-zinc-200/80 bg-gradient-to-r from-zinc-50/90 to-zinc-100/50 px-6 py-5 dark:from-zinc-800/80 dark:to-zinc-800/50">
+                        <div class="flex items-start justify-between gap-4">
+                            <div>
+                                <h2 class="text-base font-semibold text-zinc-900 dark:text-white">PIX gerado</h2>
+                                <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">SMS quando o cliente gera um PIX no checkout.</p>
+                            </div>
+                            <Toggle v-model="form.sms.pix_generated.enabled" />
+                        </div>
+                    </div>
+                    <div class="p-6 space-y-3">
+                        <textarea
+                            v-model="form.sms.pix_generated.body_text"
+                            :disabled="!form.sms.pix_generated.enabled"
+                            rows="4"
+                            maxlength="200"
+                            :class="inputClass"
+                            placeholder="PIX de {nome_produto}. Pague: {link_pix}"
+                        />
+                        <p :class="['text-xs', smsFieldOverLimit(form.sms.pix_generated.body_text, form.sms.pix_generated.enabled) ? 'text-red-600' : 'text-zinc-500']">
+                            {{ smsTextLength(form.sms.pix_generated.body_text) }}/{{ SMS_MAX_LENGTH }} caracteres
+                        </p>
+                        <p class="text-xs text-zinc-500">
+                            Placeholders:
+                            <code class="rounded bg-zinc-100 px-1 dark:bg-zinc-700">{link_pix}</code>,
+                            <code class="rounded bg-zinc-100 px-1 dark:bg-zinc-700">{nome_produto}</code>,
+                            <code class="rounded bg-zinc-100 px-1 dark:bg-zinc-700">{valor}</code>
+                        </p>
+                    </div>
+                </section>
+
+                <section class="panel-table">
+                    <div class="border-b border-zinc-200/80 bg-gradient-to-r from-zinc-50/90 to-zinc-100/50 px-6 py-5 dark:from-zinc-800/80 dark:to-zinc-800/50">
+                        <div class="flex items-start justify-between gap-4">
+                            <div>
+                                <h2 class="text-base font-semibold text-zinc-900 dark:text-white">Recuperação de carrinho (SMS)</h2>
+                                <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Etapas configuráveis para sessões abandonadas e pedidos pendentes.</p>
+                            </div>
+                            <Toggle v-model="form.sms.cart_recovery.enabled" />
+                        </div>
+                    </div>
+                    <div class="p-6 space-y-6">
+                        <div>
+                            <label class="mb-1.5 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Por quanto tempo tentar recuperar?</label>
+                            <p class="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
+                                Após esse prazo, nenhum SMS de recuperação será enviado para o mesmo abandono.
+                            </p>
+                            <select
+                                :value="Number(form.sms.cart_recovery.deadline_hours) || 48"
+                                :disabled="!form.sms.cart_recovery.enabled"
+                                :class="inputClass"
+                                class="max-w-xs"
+                                @change="setSmsDeadlineHours($event.target.value)"
+                            >
+                                <option
+                                    v-for="opt in smsDeadlineOptions"
+                                    :key="opt.hours"
+                                    :value="opt.hours"
+                                >
+                                    {{ opt.label }}
+                                </option>
+                            </select>
+                        </div>
+
+                        <div
+                            v-for="(stage, index) in form.sms.cart_recovery.stages"
+                            :key="`sms-stage-${index}-${stage.delay_minutes}`"
+                            class="panel-card-sm space-y-4 dark:bg-zinc-900/20"
+                        >
+                            <div class="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <h3 class="text-sm font-semibold text-zinc-900 dark:text-white">Etapa {{ index + 1 }}</h3>
+                                    <p class="mt-0.5 text-xs font-medium text-[var(--color-primary)]">
+                                        {{ formatSmsDelaySummary(stage) }}
+                                    </p>
+                                </div>
+                                <button
+                                    v-if="form.sms.cart_recovery.stages.length > 1"
+                                    type="button"
+                                    class="text-xs font-medium text-red-600 hover:underline"
+                                    :disabled="!form.sms.cart_recovery.enabled"
+                                    @click="removeSmsRecoveryStage(index)"
+                                >
+                                    Remover
+                                </button>
+                            </div>
+
+                            <div>
+                                <label class="mb-1.5 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Quando enviar?</label>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <input
+                                        v-model.number="form.sms.cart_recovery.stages[index].delay_value"
+                                        :disabled="!form.sms.cart_recovery.enabled"
+                                        type="number"
+                                        min="1"
+                                        :class="inputClass"
+                                        class="w-20 shrink-0"
+                                        @input="syncStageDelayMinutes(index)"
+                                    />
+                                    <select
+                                        v-model="form.sms.cart_recovery.stages[index].delay_unit"
+                                        :disabled="!form.sms.cart_recovery.enabled"
+                                        :class="inputClass"
+                                        class="min-w-[7rem] flex-1"
+                                        @change="syncStageDelayMinutes(index)"
+                                    >
+                                        <option
+                                            v-for="unit in SMS_DELAY_UNIT_OPTIONS"
+                                            :key="unit.id"
+                                            :value="unit.id"
+                                        >
+                                            {{ unit.label }}
+                                        </option>
+                                    </select>
+                                    <span class="text-xs text-zinc-500 dark:text-zinc-400">após o abandono</span>
+                                </div>
+                                <div class="mt-3 flex flex-wrap gap-2">
+                                    <span class="w-full text-xs text-zinc-500 dark:text-zinc-400">Atalhos:</span>
+                                    <button
+                                        v-for="preset in SMS_DELAY_PRESETS"
+                                        :key="preset.minutes"
+                                        type="button"
+                                        :disabled="!form.sms.cart_recovery.enabled"
+                                        :class="[
+                                            'rounded-lg px-2.5 py-1 text-xs font-medium transition',
+                                            isSmsDelayPresetActive(stage, preset.minutes)
+                                                ? 'bg-[var(--color-primary)] text-white shadow-sm'
+                                                : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700',
+                                        ]"
+                                        @click="applySmsDelayPreset(index, preset.minutes)"
+                                    >
+                                        {{ preset.label }}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="mb-1.5 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Mensagem do SMS</label>
+                                <textarea
+                                    v-model="form.sms.cart_recovery.stages[index].body_text"
+                                    :disabled="!form.sms.cart_recovery.enabled"
+                                    rows="3"
+                                    maxlength="200"
+                                    :class="inputClass"
+                                    placeholder="Ex.: Ola {nome_cliente}! Retome {nome_produto}: {link_checkout}"
+                                />
+                                <p :class="['mt-1 text-xs', smsFieldOverLimit(stage.body_text, form.sms.cart_recovery.enabled) ? 'text-red-600' : 'text-zinc-500']">
+                                    {{ smsTextLength(stage.body_text) }}/{{ SMS_MAX_LENGTH }} caracteres
+                                </p>
+                            </div>
+                        </div>
+
+                        <button
+                            type="button"
+                            class="text-sm font-medium text-[var(--color-primary)] hover:underline"
+                            :disabled="!form.sms.cart_recovery.enabled"
+                            @click="addSmsRecoveryStage"
+                        >
+                            + Adicionar etapa
+                        </button>
+
+                        <p class="text-xs text-zinc-500">
+                            Placeholders:
+                            <code class="rounded bg-zinc-100 px-1 dark:bg-zinc-700">{nome_cliente}</code>,
+                            <code class="rounded bg-zinc-100 px-1 dark:bg-zinc-700">{nome_produto}</code>,
+                            <code class="rounded bg-zinc-100 px-1 dark:bg-zinc-700">{link_checkout}</code>
+                        </p>
+                    </div>
+                </section>
+
+                <div class="flex flex-wrap items-center gap-3">
+                    <Button type="submit" :disabled="form.processing || !!smsValidationError">Salvar alterações</Button>
                     <Link
                         href="/produtos"
                         class="inline-flex items-center rounded-xl border border-zinc-200 px-4 py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"

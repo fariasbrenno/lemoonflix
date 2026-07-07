@@ -34,11 +34,14 @@ return Application::configure(basePath: dirname(__DIR__))
             'checkout/cajupay/webhook',
         ]);
 
+        $middleware->prepend(\App\Http\Middleware\BlockSensitivePaths::class);
+
         $middleware->web(prepend: [
             \App\Http\Middleware\ForceHttpsWhenForwardedProto::class,
             \App\Http\Middleware\EnsureDockerSetup::class,
             \App\Http\Middleware\EnsureInstalled::class,
         ], append: [
+            \App\Http\Middleware\PrepareCheckoutEmbed::class,
             \App\Http\Middleware\ApplyWhiteLabelBranding::class,
             \App\Http\Middleware\HandleInertiaRequests::class,
             \App\Http\Middleware\PreventCacheForHtml::class,
@@ -83,14 +86,20 @@ return Application::configure(basePath: dirname(__DIR__))
             $isCheckout = str_starts_with($path, 'checkout')
                 || str_starts_with($path, 'api-checkout')
                 || $path === 'renovar';
-            if (! $isCheckout) {
+            $isAuthAccess = $path === 'login'
+                || $path === 'access'
+                || (bool) preg_match('#^m/[^/]+/(login|access)$#', $path);
+            if (! $isCheckout && ! $isAuthAccess) {
                 return null;
             }
 
             $retryAfter = $e->getHeaders()['Retry-After'] ?? null;
+            $defaultMessage = $isAuthAccess
+                ? 'Muitas tentativas. Aguarde 1 minuto e tente novamente, ou use o link do e-mail de compra.'
+                : 'Aguarde um momento antes de tentar novamente.';
             $message = $e->getMessage() !== '' && $e->getMessage() !== 'Too Many Attempts.'
                 ? $e->getMessage()
-                : 'Aguarde um momento antes de tentar novamente.';
+                : $defaultMessage;
 
             if ($request->expectsJson()) {
                 return response()->json([
@@ -143,11 +152,12 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->job(new \App\Jobs\SendSubscriptionRemindersJob)->dailyAt('09:00');
         $schedule->command('checkout:fire-abandoned-cart-webhooks')->everyTenMinutes();
         $schedule->command('checkout:send-cart-recovery-emails')->everyMinute();
+        $schedule->command('checkout:send-cart-recovery-sms')->everyMinute();
         $schedule->command('email-campaign:process')->everyMinute();
         $schedule->command('payments:reconcile-pending --limit=200 --days=45')->everyMinute();
         $schedule->command('orders:cancel-stale-pending')->hourly();
         $schedule->command('commissions:release')->hourly();
-        $schedule->command('payouts:reconcile')->everyTenMinutes();
+        $schedule->command('payouts:reconcile')->everyMinute();
         $schedule->command('coproducers:expire-invites')->daily();
         $schedule->command('schedule:heartbeat')->everyMinute();
         $schedule->job(new \App\Jobs\QueueHeartbeatJob)->everyMinute();

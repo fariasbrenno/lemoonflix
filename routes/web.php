@@ -184,6 +184,16 @@ Route::post('/checkout/cajupay/session', [\App\Http\Controllers\CheckoutControll
 Route::post('/checkout/cajupay/confirm-order', [\App\Http\Controllers\CheckoutController::class, 'cajupayConfirmOrder'])
     ->name('checkout.cajupay.confirm-order')
     ->middleware(['throttle:checkout-process', 'throttle:checkout-card', 'throttle:checkout-email', 'throttle:checkout-product-ip', 'checkout.abuse']);
+Route::post('/checkout/cajupay/parcelado/session', [\App\Http\Controllers\CheckoutController::class, 'cajupayParceladoSession'])
+    ->name('checkout.cajupay.parcelado.session')
+    ->middleware(['throttle:checkout-process', 'checkout.abuse']);
+Route::post('/checkout/cajupay/parcelado/confirm-order', [\App\Http\Controllers\CheckoutController::class, 'cajupayParceladoConfirmOrder'])
+    ->name('checkout.cajupay.parcelado.confirm-order')
+    ->middleware(['throttle:checkout-process', 'throttle:checkout-email', 'throttle:checkout-product-ip', 'checkout.abuse']);
+Route::post('/checkout/cajupay/parcelado/complete', [\App\Http\Controllers\CheckoutController::class, 'cajupayParceladoComplete'])
+    ->name('checkout.cajupay.parcelado.complete')
+    ->middleware(['throttle:checkout-process', 'checkout.abuse']);
+Route::get('/checkout/pix-parcelado', [\App\Http\Controllers\CheckoutController::class, 'pixParceladoPage'])->name('checkout.pix-parcelado');
 // Mesmo handler que webhooks.cajupay — URL alternativa usada em docs/curl da CajuPay
 Route::post('/checkout/cajupay/webhook', [\App\Http\Controllers\Webhooks\CajuPayWebhookController::class, 'handle'])
     ->name('webhooks.cajupay.checkout-alias')
@@ -237,11 +247,11 @@ Route::middleware('guest')->group(function () {
     Route::get('/criar-admin', [\App\Http\Controllers\CreateFirstAdminController::class, 'show'])->name('criar-admin');
     Route::post('/criar-admin', [\App\Http\Controllers\CreateFirstAdminController::class, 'store'])->middleware('throttle:5,1');
     Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
-    Route::post('/login', [LoginController::class, 'login'])->middleware('throttle:5,1');
+    Route::post('/login', [LoginController::class, 'login'])->middleware('throttle:platform-login');
     Route::get('/esqueci-senha', [ForgotPasswordController::class, 'showLinkRequestForm'])->name('password.request');
-    Route::post('/esqueci-senha', [ForgotPasswordController::class, 'sendResetLinkEmail'])->name('password.email')->middleware('throttle:6,1');
+    Route::post('/esqueci-senha', [ForgotPasswordController::class, 'sendResetLinkEmail'])->name('password.email')->middleware('throttle:password-reset');
     Route::get('/redefinir-senha/{token}', [ResetPasswordController::class, 'showResetForm'])->name('password.reset');
-    Route::post('/redefinir-senha', [ResetPasswordController::class, 'reset'])->name('password.update')->middleware('throttle:6,1');
+    Route::post('/redefinir-senha', [ResetPasswordController::class, 'reset'])->name('password.update')->middleware('throttle:password-reset');
 });
 
 Route::middleware('auth')->group(function () {
@@ -432,6 +442,7 @@ Route::middleware(['auth', 'admin.tenant', 'role:admin|infoprodutor|team', 'audi
         Route::put('/produtos/{produto}/downsell-page/config', [\App\Http\Controllers\UpsellDownsellPageController::class, 'updateDownsellPage'])->name('downsell-page.update');
         Route::post('/produtos/{produto}/downsell-page/config', [\App\Http\Controllers\UpsellDownsellPageController::class, 'updateDownsellPage'])->name('downsell-page.update.post');
         Route::put('/produtos/{produto}', [\App\Http\Controllers\ProdutosController::class, 'update'])->name('produtos.update');
+        Route::get('/produtos/{produto}/pix-parcelado/platform-rules', [\App\Http\Controllers\ProdutosController::class, 'pixParceladoPlatformRules'])->name('produtos.pix-parcelado.platform-rules');
         Route::post('/produtos/{produto}/email-template-logo', [\App\Http\Controllers\ProdutosController::class, 'uploadEmailTemplateLogo'])->name('produtos.email-template-logo');
         Route::delete('/produtos/{produto}', [\App\Http\Controllers\ProdutosController::class, 'destroy'])->name('produtos.destroy');
         Route::post('/produtos/{produto}/duplicate', [\App\Http\Controllers\ProdutosController::class, 'duplicate'])->name('produtos.duplicate');
@@ -474,6 +485,7 @@ Route::middleware(['auth', 'admin.tenant', 'role:admin|infoprodutor|team', 'audi
 
         Route::get('/produtos/{produto}/affiliate-program', [\App\Http\Controllers\ProductAffiliateProgramController::class, 'show'])->name('produtos.affiliate-program.show');
         Route::put('/produtos/{produto}/affiliate-program', [\App\Http\Controllers\ProductAffiliateProgramController::class, 'updateProgram'])->name('produtos.affiliate-program.update');
+        Route::post('/produtos/{produto}/affiliate-program', [\App\Http\Controllers\ProductAffiliateProgramController::class, 'updateProgram'])->name('produtos.affiliate-program.update.post');
         Route::put('/produtos/{produto}/affiliates/{affiliate}', [\App\Http\Controllers\ProductAffiliateProgramController::class, 'updateAffiliate'])->name('produtos.affiliates.update');
         Route::delete('/produtos/{produto}/affiliates/{affiliate}', [\App\Http\Controllers\ProductAffiliateProgramController::class, 'destroyAffiliate'])->name('produtos.affiliates.destroy');
 
@@ -540,6 +552,9 @@ Route::middleware(['auth', 'admin.tenant', 'role:admin|infoprodutor|team', 'audi
         Route::post('/configuracoes/email/send-test', [\App\Http\Controllers\EmailTestController::class, 'sendTest'])->name('settings.email.send-test');
         Route::post('/configuracoes/storage/test', [\App\Http\Controllers\StorageTestController::class, '__invoke'])->name('settings.storage.test');
         Route::post('/configuracoes/storage/migrate', [\App\Http\Controllers\StorageMigrateController::class, '__invoke'])->name('settings.storage.migrate');
+        Route::post('/configuracoes/push/vapid/generate', [\App\Http\Controllers\PushVapidSettingsController::class, 'generate'])
+            ->name('settings.push.vapid.generate')
+            ->middleware('throttle:5,1');
         Route::get('/configuracoes/update/check', [\App\Http\Controllers\UpdateController::class, 'check'])->name('settings.update.check');
         Route::get('/configuracoes/update/integrity', [\App\Http\Controllers\UpdateController::class, 'integrity'])->name('settings.update.integrity');
         Route::post('/configuracoes/update/migrate', [\App\Http\Controllers\UpdateController::class, 'migrateNow'])->name('settings.update.migrate')->middleware('throttle:10,1');
@@ -549,6 +564,8 @@ Route::middleware(['auth', 'admin.tenant', 'role:admin|infoprodutor|team', 'audi
         Route::post('/configuracoes/gateways/{slug}/test', [\App\Http\Controllers\GatewaysController::class, 'test'])->name('gateways.test');
         Route::post('/configuracoes/gateways/cajupay/rotate-webhook-secret', [\App\Http\Controllers\GatewaysController::class, 'rotateCajuPayWebhookSecret'])
             ->name('gateways.cajupay.rotate-webhook');
+        Route::post('/configuracoes/gateways/cajupay/pix-parcelado/accept', [\App\Http\Controllers\GatewaysController::class, 'acceptCajuPayPixParceladoEnrollment'])
+            ->name('gateways.cajupay.parcelado.accept');
     });
     // Upload de arquivo (PHP/Laravel lida melhor via POST)
     Route::post('/configuracoes/gateways/{slug}/certificate', [\App\Http\Controllers\GatewaysController::class, 'updateCertificate'])
@@ -610,6 +627,12 @@ Route::middleware(['auth', 'admin.tenant', 'role:admin|infoprodutor|team', 'audi
         Route::put('/integracoes/cademi/{cademi}', [\App\Http\Controllers\CademiController::class, 'update'])->name('integrations.cademi.update');
         Route::delete('/integracoes/cademi/{cademi}', [\App\Http\Controllers\CademiController::class, 'destroy'])->name('integrations.cademi.destroy');
     Route::get('/integracoes/cademi/{cademi}/tags', [\App\Http\Controllers\CademiController::class, 'tags'])->name('integrations.cademi.tags');
+
+        Route::get('/integracoes/integrax', [\App\Http\Controllers\IntegraxController::class, 'show'])->name('integrations.integrax.show');
+        Route::put('/integracoes/integrax', [\App\Http\Controllers\IntegraxController::class, 'update'])->name('integrations.integrax.update');
+        Route::post('/integracoes/integrax/test', [\App\Http\Controllers\IntegraxController::class, 'test'])
+            ->middleware('throttle:10,1')
+            ->name('integrations.integrax.test');
 
         Route::post('/integracoes/conversion-pixels', [\App\Http\Controllers\ConversionPixelIntegrationController::class, 'store'])->name('integrations.conversion-pixels.store');
         Route::put('/integracoes/conversion-pixels/{conversionPixelIntegration}', [\App\Http\Controllers\ConversionPixelIntegrationController::class, 'update'])->name('integrations.conversion-pixels.update');
@@ -717,11 +740,11 @@ Route::prefix('m/{slug}')->where(['slug' => '[a-zA-Z0-9\-]{3,64}'])->middleware(
         ]);
     })->name('member-area-app.sw');
     Route::get('login', [\App\Http\Controllers\MemberAreaLoginController::class, 'showLoginForm'])->name('member-area.login')->middleware('guest');
-    Route::post('login', [\App\Http\Controllers\MemberAreaLoginController::class, 'login'])->name('member-area.login.post')->middleware(['guest', 'throttle:5,1']);
-    Route::post('login-without-password', [\App\Http\Controllers\MemberAreaLoginController::class, 'loginWithoutPassword'])->name('member-area.login.without-password')->middleware(['guest', 'throttle:5,1']);
+    Route::post('login', [\App\Http\Controllers\MemberAreaLoginController::class, 'login'])->name('member-area.login.post')->middleware(['guest', 'throttle:member-login']);
+    Route::post('login-without-password', [\App\Http\Controllers\MemberAreaLoginController::class, 'loginWithoutPassword'])->name('member-area.login.without-password')->middleware(['guest', 'throttle:member-login']);
     Route::get('esqueci-senha', [\App\Http\Controllers\MemberAreaForgotPasswordController::class, 'showLinkRequestForm'])->name('member-area.password.request')->middleware('guest');
-    Route::post('esqueci-senha', [\App\Http\Controllers\MemberAreaForgotPasswordController::class, 'sendResetLinkEmail'])->name('member-area.password.email')->middleware(['guest', 'throttle:6,1']);
-    Route::get('access', [\App\Http\Controllers\MemberAreaLoginController::class, 'magicAccess'])->name('member-area.magic-access')->middleware('member.area.signed');
+    Route::post('esqueci-senha', [\App\Http\Controllers\MemberAreaForgotPasswordController::class, 'sendResetLinkEmail'])->name('member-area.password.email')->middleware(['guest', 'throttle:password-reset']);
+    Route::get('access', [\App\Http\Controllers\MemberAreaLoginController::class, 'magicAccess'])->name('member-area.magic-access')->middleware(['member.area.signed', 'throttle:magic-access']);
 
     Route::middleware(['member.area.access'])->group(function () {
         Route::get('/', [\App\Http\Controllers\MemberAreaAppController::class, 'show'])->name('member-area-app.show');
@@ -782,7 +805,7 @@ Route::middleware(['web', 'member.area.resolve.by.host'])->group(function () {
             'Expires' => '0',
         ]);
     })->name('member-area-app.sw.host');
-    Route::get('access', [\App\Http\Controllers\MemberAreaLoginController::class, 'magicAccessHost'])->name('member-area.magic-access.host')->middleware('member.area.signed');
+    Route::get('access', [\App\Http\Controllers\MemberAreaLoginController::class, 'magicAccessHost'])->name('member-area.magic-access.host')->middleware(['member.area.signed', 'throttle:magic-access']);
     // Login da área de membros por host: não registramos GET/POST /login aqui para não sobrescrever
     // o login da plataforma. O Auth\LoginController delega para MemberAreaLoginController quando
     // o host for de área de membros (subdomínio ou domínio próprio).
@@ -796,7 +819,7 @@ Route::middleware(['web', 'member.area.resolve.by.host'])->group(function () {
             'request' => $request,
             'slug' => $slug,
         ]);
-    })->name('member-area.login.without-password.host')->middleware(['guest', 'throttle:5,1']);
+    })->name('member-area.login.without-password.host')->middleware(['guest', 'throttle:member-login']);
 
     Route::middleware(['member.area.access'])->group(function () {
         Route::get('modulos', [\App\Http\Controllers\MemberAreaAppController::class, 'modulos'])->name('member-area-app.modulos.host');

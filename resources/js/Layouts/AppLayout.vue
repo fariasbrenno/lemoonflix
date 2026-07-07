@@ -77,9 +77,9 @@ watchEffect(() => {
             <div
                 class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl bg-white shadow-sm dark:bg-zinc-800"
             >
-                <main class="flex-1 px-4 pb-24 pt-4 md:px-6 md:pt-6 lg:pb-8">
+                <main class="flex-1 min-w-0 overflow-y-auto px-4 pb-24 pt-4 md:px-6 md:pt-6 lg:pb-8">
                     <div
-                        class="w-full"
+                        class="w-full min-w-0"
                         :class="[
                             layoutContentFlushLeft ? 'max-w-none lg:-ml-6' : 'mx-auto',
                             !layoutContentFlushLeft && contentMaxWidth,

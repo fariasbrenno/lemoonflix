@@ -22,10 +22,12 @@ class CheckoutSession extends Model
         'tenant_id', 'product_id', 'product_offer_id', 'subscription_plan_id',
         'checkout_slug', 'session_token', 'step', 'form_started_at', 'form_filled_at',
         'email', 'name',
+        'phone',
         'customer_ip', 'country_code', 'order_id', 'utm_source', 'utm_medium', 'utm_campaign',
         'tracking_metadata',
         'abandoned_webhook_fired_at',
         'recovery_email_stage', 'recovery_email_last_sent_at', 'recovery_email_next_at',
+        'recovery_sms_stage', 'recovery_sms_last_sent_at', 'recovery_sms_next_at',
     ];
 
     protected function casts(): array
@@ -36,6 +38,8 @@ class CheckoutSession extends Model
             'abandoned_webhook_fired_at' => 'datetime',
             'recovery_email_last_sent_at' => 'datetime',
             'recovery_email_next_at' => 'datetime',
+            'recovery_sms_last_sent_at' => 'datetime',
+            'recovery_sms_next_at' => 'datetime',
             'tracking_metadata' => 'array',
         ];
     }

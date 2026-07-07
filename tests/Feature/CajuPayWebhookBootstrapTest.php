@@ -33,7 +33,7 @@ class CajuPayWebhookBootstrapTest extends TestCase
                     'id' => 'ep_new_001',
                     'url' => 'https://getfy.test/webhooks/gateways/cajupay',
                     'enabled' => true,
-                    'event_types' => ['checkout.payment.*', 'pix.payment.*'],
+                    'event_types' => ['checkout.payment.*', 'pix.payment.*', 'payout.*'],
                 ],
                 'created' => true,
                 'already_exists' => false,
@@ -67,7 +67,8 @@ class CajuPayWebhookBootstrapTest extends TestCase
 
             return ($body['rotate_if_exists'] ?? null) === false
                 && in_array('checkout.payment.*', $body['event_types'] ?? [], true)
-                && in_array('pix.payment.*', $body['event_types'] ?? [], true);
+                && in_array('pix.payment.*', $body['event_types'] ?? [], true)
+                && in_array('payout.*', $body['event_types'] ?? [], true);
         });
     }
 

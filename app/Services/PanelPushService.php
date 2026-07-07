@@ -5,7 +5,7 @@ namespace App\Services;
 use App\Models\PanelNotification;
 use App\Models\PanelPushSubscription;
 use App\Support\PanelPushPreferences;
-use App\Support\VapidEnvKeys;
+use App\Support\VapidKeysManager;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Minishlink\WebPush\Subscription;
@@ -84,8 +84,9 @@ class PanelPushService
         string $category = 'pix',
         ?string $notificationTag = null
     ): int {
-        $vapidPublic = VapidEnvKeys::normalize(config('getfy.pwa.vapid_public'));
-        $vapidPrivate = VapidEnvKeys::normalize(config('getfy.pwa.vapid_private'));
+        $vapidPair = app(VapidKeysManager::class)->resolveKeyPair();
+        $vapidPublic = $vapidPair['public'];
+        $vapidPrivate = $vapidPair['private'];
 
         if (! $vapidPublic || ! $vapidPrivate) {
             Log::warning('PanelPushService: VAPID não configurado (defina PWA_VAPID_PUBLIC e PWA_VAPID_PRIVATE no .env)', ['tenant_id' => $tenantId]);

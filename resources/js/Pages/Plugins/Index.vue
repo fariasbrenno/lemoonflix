@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue';
 import { router, usePage } from '@inertiajs/vue3';
 import LayoutInfoprodutor from '@/Layouts/LayoutInfoprodutor.vue';
 import Button from '@/components/ui/Button.vue';
+import HorizontalScrollTabs from '@/components/ui/HorizontalScrollTabs.vue';
 import { Puzzle, Power, PowerOff, ExternalLink, CreditCard, Package, Download, Trash2, FolderUp, ArrowUpRight } from 'lucide-vue-next';
 
 defineOptions({ layout: LayoutInfoprodutor });
@@ -362,10 +363,7 @@ function submitManualInstall() {
             </div>
         </div>
 
-        <nav
-            class="inline-flex flex-wrap gap-1 rounded-xl bg-zinc-100/80 p-1 dark:bg-zinc-800/80"
-            aria-label="Abas de plugins"
-        >
+        <HorizontalScrollTabs aria-label="Abas de plugins">
             <template v-for="tab in TABS" :key="tab.id">
                 <a
                     v-if="tab.id === 'store'"
@@ -393,7 +391,7 @@ function submitManualInstall() {
                     {{ tab.label }}
                 </button>
             </template>
-        </nav>
+        </HorizontalScrollTabs>
 
         <!-- Aba Instalados -->
         <template v-if="currentTab === 'installed'">

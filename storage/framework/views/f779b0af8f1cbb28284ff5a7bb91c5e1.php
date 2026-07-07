@@ -5,12 +5,16 @@
     $skipPanelPwa = $isMemberArea || $isCheckout;
 ?>
 <!DOCTYPE html>
-<html lang="<?php echo e(str_replace('_', '-', app()->getLocale())); ?>">
+<html lang="<?php echo e(str_replace('_', '-', app()->getLocale())); ?>" class="<?php echo \Illuminate\Support\Arr::toCssClasses(['panel-app' => ! $skipPanelPwa]); ?>">
 <head>
     <meta charset="utf-8">
+    <?php if($skipPanelPwa): ?>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <?php else: ?>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+    <?php endif; ?>
     <script>
-        (function(){try{var s=localStorage.getItem('theme');var t=s||'dark';document.documentElement.classList.toggle('dark',t==='dark');}catch(_){}})();
+        (function(){try{var s=localStorage.getItem('theme');var t=s||'dark';document.documentElement.classList.toggle('dark',t==='dark');<?php if (! ($skipPanelPwa)): ?>if(window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true){document.documentElement.classList.add('pwa-standalone');}<?php endif; ?>}catch(_){}})();
     </script>
     <meta name="csrf-token" content="<?php echo e(csrf_token()); ?>">
     <?php if(!empty($openGraph) && is_array($openGraph)): ?>
@@ -48,12 +52,15 @@
     <?php if (! ($skipPanelPwa)): ?>
     <?php
         $wlFavicon = \App\Support\BrandFavicon::publicUrl();
+        $wlAppName = trim((string) config('getfy.app_name', config('app.name', 'Getfy')));
+        if ($wlAppName === '') {
+            $wlAppName = 'Getfy';
+        }
         $wlThemeColor = config('getfy.pwa_theme_color');
         $wlThemeColor = ($wlThemeColor !== null && $wlThemeColor !== '') ? $wlThemeColor : config('getfy.theme_primary', '#0ea5e9');
-        $pwaIconPath = config('getfy.pwa_icon') ?: config('getfy.pwa_icon_192');
-        $wlAppleIcon = (is_string($pwaIconPath) && $pwaIconPath !== '' && is_file(public_path(ltrim($pwaIconPath, '/'))))
-            ? url('/'.ltrim($pwaIconPath, '/'))
-            : null;
+        $wlAppleIcon = \App\Support\PwaIcon::customPublicUrl('192')
+            ?? \App\Support\PwaIcon::customPublicUrl('512')
+            ?? \App\Support\PwaIcon::publicUrl('192');
     ?>
     <link rel="icon" href="<?php echo e($wlFavicon); ?>" type="image/png" sizes="32x32">
     <link rel="shortcut icon" href="<?php echo e($wlFavicon); ?>" type="image/png">
@@ -62,6 +69,7 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="<?php echo e(e($wlAppName)); ?>">
     <?php if($wlAppleIcon): ?>
     <link rel="apple-touch-icon" href="<?php echo e($wlAppleIcon); ?>">
     <?php endif; ?>

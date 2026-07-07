@@ -22,8 +22,10 @@ use App\Plugins\PluginExtensionRegistry;
 use App\Plugins\PluginHookBus;
 use App\Plugins\PluginProductTypeRegistry;
 use App\Plugins\PluginRegistry;
+use App\Services\CajuPayPixParceladoService;
 use App\Services\StorageService;
 use App\Services\TeamAccessService;
+use App\Support\MoneyMinorUnits;
 use App\Support\CheckoutCurrencyCatalog;
 use App\Support\CheckoutCustomPriceByCurrency;
 use Illuminate\Http\Request;
@@ -319,6 +321,13 @@ class ProdutosController extends Controller
             $defaultsCfg['custom_prices_by_currency'] ?? ['enabled' => false, 'amounts' => []],
             is_array($checkoutConfig['custom_prices_by_currency'] ?? null) ? $checkoutConfig['custom_prices_by_currency'] : []
         );
+        $checkoutConfig['sms'] = array_replace_recursive(
+            Product::defaultSmsConfig(),
+            is_array($checkoutConfig['sms'] ?? null) ? $checkoutConfig['sms'] : []
+        );
+        if (isset($checkoutConfig['sms']['cart_recovery']['stages']) && is_array($checkoutConfig['sms']['cart_recovery']['stages'])) {
+            $checkoutConfig['sms']['cart_recovery']['stages'] = array_values($checkoutConfig['sms']['cart_recovery']['stages']);
+        }
         $produtoArray['checkout_config'] = $checkoutConfig;
 
         $tenantCurrencies = $this->tenantCurrenciesFor($tenantId);
@@ -388,6 +397,17 @@ class ProdutosController extends Controller
             ->values()
             ->all();
 
+        $parceladoService = app(CajuPayPixParceladoService::class);
+        $cajupayParceladoEnrollment = null;
+        $creds = $parceladoService->credentialsForTenant($tenantId);
+        if ($creds) {
+            try {
+                $cajupayParceladoEnrollment = $parceladoService->enrollmentStatus($creds);
+            } catch (\Throwable) {
+                $cajupayParceladoEnrollment = ['status' => 'unknown'];
+            }
+        }
+
         return Inertia::render('Produtos/Edit', [
             'produto' => $produtoArray,
             'productTypes' => $productTypes,
@@ -395,6 +415,7 @@ class ProdutosController extends Controller
             'exchange_rates' => $this->legacyExchangeRatesMap($tenantCurrencies),
             'tenant_currencies' => $tenantCurrencies,
             'gateways_by_method' => $gatewaysByMethod,
+            'cajupay_parcelado_enrollment' => $cajupayParceladoEnrollment,
             'cademi_integrations' => $cademiIntegrations,
             'product_pixel_integrations' => $productPixelIntegrations,
             'plugin_product_panels' => PluginRegistry::getProductPanels(),
@@ -497,6 +518,11 @@ class ProdutosController extends Controller
         if ($request->has('cart_recovery_email') && is_string($request->cart_recovery_email)) {
             $decoded = json_decode($request->cart_recovery_email, true);
             $request->merge(['cart_recovery_email' => is_array($decoded) ? $decoded : null]);
+        }
+
+        if ($request->has('sms') && is_string($request->sms)) {
+            $decoded = json_decode($request->sms, true);
+            $request->merge(['sms' => is_array($decoded) ? $decoded : null]);
         }
 
         $tenantId = auth()->user()->tenant_id;
@@ -611,6 +637,17 @@ class ProdutosController extends Controller
             'payment_gateways.crypto' => ['nullable', 'string', 'max:64'],
             'payment_gateways.crypto_redundancy' => ['nullable', 'array'],
             'payment_gateways.crypto_redundancy.*' => ['string', 'max:64'],
+            'payment_gateways.pix_parcelado' => ['nullable', 'string', 'max:64'],
+            'payment_gateways.pix_parcelado_redundancy' => ['nullable', 'array'],
+            'payment_gateways.pix_parcelado_redundancy.*' => ['string', 'max:64'],
+            'pix_parcelado' => ['nullable', 'array'],
+            'pix_parcelado.max_installments' => ['nullable', 'integer', 'min:1', 'max:24'],
+            'pix_parcelado.down_payment_cents' => ['nullable', 'integer', 'min:0'],
+            'pix_parcelado.min_down_payment_bps' => ['nullable', 'integer', 'min:0', 'max:10000'],
+            'pix_parcelado.max_down_payment_bps' => ['nullable', 'integer', 'min:0', 'max:10000'],
+            'pix_parcelado.early_payment_discount_bps' => ['nullable', 'integer', 'min:0', 'max:10000'],
+            'pix_parcelado.payoff_discount_bps' => ['nullable', 'integer', 'min:0', 'max:10000'],
+            'pix_parcelado.overdue_payoff_discount_bps' => ['nullable', 'integer', 'min:0', 'max:10000'],
             'card_installments' => ['nullable', 'array'],
             'card_installments.enabled' => ['nullable', 'boolean'],
             'card_installments.max' => ['nullable', 'integer', 'min:1', 'max:12'],
@@ -636,6 +673,19 @@ class ProdutosController extends Controller
             'cart_recovery_email.stages.24h.subject' => ['nullable', 'string', 'max:255'],
             'cart_recovery_email.stages.24h.body_text' => ['nullable', 'string', 'max:65535'],
             'cart_recovery_email.stages.24h.body_html' => ['nullable', 'string', 'max:65535'],
+            'sms' => ['nullable', 'array'],
+            'sms.access_delivery' => ['nullable', 'array'],
+            'sms.access_delivery.enabled' => ['nullable', 'boolean'],
+            'sms.access_delivery.body_text' => ['nullable', 'string', 'max:160'],
+            'sms.pix_generated' => ['nullable', 'array'],
+            'sms.pix_generated.enabled' => ['nullable', 'boolean'],
+            'sms.pix_generated.body_text' => ['nullable', 'string', 'max:160'],
+            'sms.cart_recovery' => ['nullable', 'array'],
+            'sms.cart_recovery.enabled' => ['nullable', 'boolean'],
+            'sms.cart_recovery.deadline_hours' => ['nullable', 'integer', 'min:1', 'max:168'],
+            'sms.cart_recovery.stages' => ['nullable', 'array'],
+            'sms.cart_recovery.stages.*.delay_minutes' => ['nullable', 'integer', 'min:1', 'max:10080'],
+            'sms.cart_recovery.stages.*.body_text' => ['nullable', 'string', 'max:160'],
             'deliverable_link' => ['nullable', 'string', 'url', 'max:500'],
             'base_interval' => ['nullable', 'string', 'in:weekly,monthly,quarterly,semi_annual,annual,lifetime'],
             'pagarme_billing' => ['nullable', 'array'],
@@ -765,12 +815,16 @@ class ProdutosController extends Controller
         }
         $cardInstallments = $validated['card_installments'] ?? null;
         unset($validated['card_installments']);
+        $pixParceladoRules = $validated['pix_parcelado'] ?? null;
+        unset($validated['pix_parcelado']);
         $stripeLinkEnabled = array_key_exists('stripe_link_enabled', $validated) ? $validated['stripe_link_enabled'] : null;
         unset($validated['stripe_link_enabled']);
         $emailTemplate = $validated['email_template'] ?? null;
         unset($validated['email_template']);
         $cartRecoveryEmail = $validated['cart_recovery_email'] ?? null;
         unset($validated['cart_recovery_email']);
+        $smsConfig = $validated['sms'] ?? null;
+        unset($validated['sms']);
         $deliverableLink = $validated['deliverable_link'] ?? null;
         unset($validated['deliverable_link']);
         $conversionPixels = $validated['conversion_pixels'] ?? null;
@@ -818,6 +872,23 @@ class ProdutosController extends Controller
             $configUpdated = true;
         }
         if (is_array($paymentGateways)) {
+            $pgwPixParcelado = ! empty($paymentGateways['pix_parcelado']) ? $paymentGateways['pix_parcelado'] : null;
+            if ($produto->billing_type !== Product::BILLING_ONE_TIME) {
+                $pgwPixParcelado = null;
+            }
+            if ($pgwPixParcelado === 'cajupay' && is_array($pixParceladoRules)) {
+                $parceladoService = app(CajuPayPixParceladoService::class);
+                $creds = $parceladoService->credentialsForTenant($produto->tenant_id);
+                $platformRules = $creds ? $parceladoService->platformRules($creds) : [];
+                $ruleErrors = $parceladoService->validateProductRules(
+                    $pixParceladoRules,
+                    $platformRules,
+                    (float) $produto->price
+                );
+                if ($ruleErrors !== []) {
+                    throw ValidationException::withMessages($ruleErrors);
+                }
+            }
             $config['payment_gateways'] = [
                 'pix' => ! empty($paymentGateways['pix']) ? $paymentGateways['pix'] : null,
                 'pix_redundancy' => array_values(array_filter(array_map(fn ($s) => is_string($s) ? trim($s) : '', $paymentGateways['pix_redundancy'] ?? []))),
@@ -831,14 +902,39 @@ class ProdutosController extends Controller
                 'google_pay_redundancy' => array_values(array_filter(array_map(fn ($s) => is_string($s) ? trim($s) : '', $paymentGateways['google_pay_redundancy'] ?? []))),
                 'crypto' => ! empty($paymentGateways['crypto']) ? $paymentGateways['crypto'] : null,
                 'crypto_redundancy' => array_values(array_filter(array_map(fn ($s) => is_string($s) ? trim($s) : '', $paymentGateways['crypto_redundancy'] ?? []))),
+                'pix_parcelado' => $pgwPixParcelado,
+                'pix_parcelado_redundancy' => array_values(array_filter(array_map(fn ($s) => is_string($s) ? trim($s) : '', $paymentGateways['pix_parcelado_redundancy'] ?? []))),
             ];
             if ($produto->billing_type === Product::BILLING_SUBSCRIPTION) {
                 $config['payment_gateways']['pix_auto'] = ! empty($paymentGateways['pix_auto']) ? $paymentGateways['pix_auto'] : null;
                 $config['payment_gateways']['pix_auto_redundancy'] = array_values(array_filter(array_map(fn ($s) => is_string($s) ? trim($s) : '', $paymentGateways['pix_auto_redundancy'] ?? [])));
+                $config['payment_gateways']['pix_parcelado'] = null;
+                $config['payment_gateways']['pix_parcelado_redundancy'] = [];
             } else {
                 $config['payment_gateways']['pix_auto'] = null;
                 $config['payment_gateways']['pix_auto_redundancy'] = [];
             }
+            $configUpdated = true;
+        }
+        if (is_array($pixParceladoRules) && ($config['payment_gateways']['pix_parcelado'] ?? null) === 'cajupay') {
+            $defaults = Product::defaultCheckoutConfig()['pix_parcelado'] ?? [];
+            $config['pix_parcelado'] = array_replace_recursive($defaults, array_filter([
+                'max_installments' => isset($pixParceladoRules['max_installments']) && $pixParceladoRules['max_installments'] !== ''
+                    ? (int) $pixParceladoRules['max_installments']
+                    : null,
+                'down_payment_cents' => isset($pixParceladoRules['down_payment_cents']) && $pixParceladoRules['down_payment_cents'] !== ''
+                    ? (int) $pixParceladoRules['down_payment_cents']
+                    : null,
+                'min_down_payment_bps' => isset($pixParceladoRules['min_down_payment_bps']) && $pixParceladoRules['min_down_payment_bps'] !== ''
+                    ? (int) $pixParceladoRules['min_down_payment_bps']
+                    : null,
+                'max_down_payment_bps' => isset($pixParceladoRules['max_down_payment_bps']) && $pixParceladoRules['max_down_payment_bps'] !== ''
+                    ? (int) $pixParceladoRules['max_down_payment_bps']
+                    : null,
+                'early_payment_discount_bps' => (int) ($pixParceladoRules['early_payment_discount_bps'] ?? 0),
+                'payoff_discount_bps' => (int) ($pixParceladoRules['payoff_discount_bps'] ?? 0),
+                'overdue_payoff_discount_bps' => (int) ($pixParceladoRules['overdue_payoff_discount_bps'] ?? 0),
+            ], static fn ($v) => $v !== null));
             $configUpdated = true;
         }
         if (is_array($cardInstallments)) {
@@ -864,6 +960,17 @@ class ProdutosController extends Controller
                 Product::defaultCheckoutConfig()['cart_recovery_email'] ?? [],
                 $cartRecoveryEmail
             );
+            $configUpdated = true;
+        }
+        if (is_array($smsConfig)) {
+            $mergedSms = array_replace_recursive(
+                Product::defaultSmsConfig(),
+                $smsConfig
+            );
+            if (isset($mergedSms['cart_recovery']['stages']) && is_array($mergedSms['cart_recovery']['stages'])) {
+                $mergedSms['cart_recovery']['stages'] = array_values($mergedSms['cart_recovery']['stages']);
+            }
+            $config['sms'] = $mergedSms;
             $configUpdated = true;
         }
         if (is_array($pagarmeBillingInput)) {
@@ -1477,6 +1584,30 @@ class ProdutosController extends Controller
         return null;
     }
 
+    public function pixParceladoPlatformRules(Product $produto): \Illuminate\Http\JsonResponse
+    {
+        $this->authorizeProduct($produto);
+
+        $parceladoService = app(CajuPayPixParceladoService::class);
+        $creds = $parceladoService->credentialsForTenant($produto->tenant_id);
+        if (! $creds) {
+            return response()->json(['message' => 'CajuPay não está conectado.'], 422);
+        }
+
+        $platformRules = $parceladoService->platformRules($creds);
+        $productRules = $parceladoService->productRulesFromConfig($produto->checkout_config);
+        $priceBrl = (float) $produto->price;
+        $totalCents = MoneyMinorUnits::toMinorUnits($priceBrl, 'BRL');
+        $merged = $parceladoService->mergeProductRulesWithPlatform($totalCents, $productRules, $platformRules);
+
+        return response()->json([
+            'platform_rules' => $platformRules,
+            'merged' => $merged,
+            'max_installments_for_price' => $merged['platform_max_installments'] ?? 0,
+            'min_amount_cents' => CajuPayPixParceladoService::MIN_AMOUNT_CENTS,
+        ]);
+    }
+
     /**
      * Gateways conectados agrupados por método (pix, card, boleto, pix_auto, apple_pay, google_pay, crypto).
      *
@@ -1495,6 +1626,7 @@ class ProdutosController extends Controller
             'pix_auto' => [],
             'apple_pay' => [],
             'google_pay' => [],
+            'pix_parcelado' => [],
             'crypto' => [],
         ];
         foreach (GatewayRegistry::all() as $gateway) {
@@ -1504,7 +1636,7 @@ class ProdutosController extends Controller
             }
             $methods = $gateway['methods'] ?? [];
             $item = ['slug' => $slug, 'name' => $gateway['name'] ?? $slug];
-            foreach (['pix', 'card', 'boleto', 'pix_auto', 'apple_pay', 'google_pay', 'crypto'] as $method) {
+            foreach (['pix', 'card', 'boleto', 'pix_auto', 'apple_pay', 'google_pay', 'pix_parcelado', 'crypto'] as $method) {
                 if (in_array($method, $methods, true)) {
                     $byMethod[$method][] = $item;
                 }

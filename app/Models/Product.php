@@ -121,6 +121,10 @@ class Product extends Model
             'youtube_url' => null,
             'redirect_after_purchase' => '',
             'back_redirect' => ['enabled' => false, 'url' => ''],
+            'embed' => [
+                'enabled' => false,
+                'allowed_origins' => [],
+            ],
             'customer_fields' => [
                 'name' => true,
                 'cpf' => true,
@@ -142,6 +146,17 @@ class Product extends Model
                 'google_pay_redundancy' => [],
                 'crypto' => null,
                 'crypto_redundancy' => [],
+                'pix_parcelado' => null,
+                'pix_parcelado_redundancy' => [],
+            ],
+            'pix_parcelado' => [
+                'max_installments' => null,
+                'down_payment_cents' => null,
+                'min_down_payment_bps' => null,
+                'max_down_payment_bps' => null,
+                'early_payment_discount_bps' => 0,
+                'payoff_discount_bps' => 0,
+                'overdue_payoff_discount_bps' => 0,
             ],
             'card_installments' => [
                 'enabled' => false,
@@ -261,6 +276,7 @@ class Product extends Model
                 'custom_js' => '',
             ],
             'subscription' => static::defaultSubscriptionSettings(),
+            'sms' => static::defaultSmsConfig(),
             'cart_recovery_email' => [
                 'enabled' => false,
                 'stages' => [
@@ -288,10 +304,40 @@ class Product extends Model
     }
 
     /**
-     * Default structure for the access email template (checkout_config.email_template).
-     *
-     * @return array{logo_url: string, from_name: string, subject: string, body_text: string, body_html: string}
+     * @return array<string, mixed>
      */
+    public static function defaultSmsConfig(): array
+    {
+        return [
+            'access_delivery' => [
+                'enabled' => false,
+                'body_text' => 'Ola {nome_cliente}! Seu acesso a {nome_produto}: {link_acesso}',
+            ],
+            'pix_generated' => [
+                'enabled' => false,
+                'body_text' => 'PIX de {nome_produto} ({valor}). Pague: {link_pix}',
+            ],
+            'cart_recovery' => [
+                'enabled' => false,
+                'deadline_hours' => 48,
+                'stages' => [
+                    [
+                        'delay_minutes' => 10,
+                        'body_text' => 'Ola {nome_cliente}! Retome {nome_produto}: {link_checkout}',
+                    ],
+                    [
+                        'delay_minutes' => 300,
+                        'body_text' => '{nome_cliente}, ainda da tempo: {link_checkout}',
+                    ],
+                    [
+                        'delay_minutes' => 1440,
+                        'body_text' => 'Ultimo lembrete {nome_produto}: {link_checkout}',
+                    ],
+                ],
+            ],
+        ];
+    }
+
     /**
      * Configuração de renovação para produtos com billing_type = subscription.
      *

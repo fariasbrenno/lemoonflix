@@ -5,6 +5,7 @@ import LayoutInfoprodutor from '@/Layouts/LayoutInfoprodutor.vue';
 import ProdutosTabs from '@/components/produtos/ProdutosTabs.vue';
 import AlunoDetailSidebar from '@/components/alunos/AlunoDetailSidebar.vue';
 import Button from '@/components/ui/Button.vue';
+import HorizontalScrollTabs from '@/components/ui/HorizontalScrollTabs.vue';
 import Checkbox from '@/components/ui/Checkbox.vue';
 import { Users, BookOpen, Package, UserPlus, Plus, ChevronDown, X, Upload, Download, Search } from 'lucide-vue-next';
 import axios from 'axios';
@@ -323,12 +324,9 @@ onUnmounted(() => {
         </div>
 
         <!-- Abas de filtro + Filtro por produto + Novo aluno -->
-        <div class="flex flex-wrap items-start justify-between gap-3">
-            <div class="flex flex-col flex-wrap gap-3 sm:flex-row sm:flex-nowrap sm:items-center">
-                <nav
-                    class="inline-flex rounded-xl bg-zinc-100/80 p-1 dark:bg-zinc-800/80"
-                    aria-label="Filtrar alunos"
-                >
+        <div class="flex min-w-0 flex-wrap items-start justify-between gap-3">
+            <div class="flex min-w-0 max-w-full flex-col flex-wrap gap-3 sm:flex-row sm:flex-nowrap sm:items-center">
+                <HorizontalScrollTabs aria-label="Filtrar alunos">
                     <button
                         v-for="opt in filterOptions"
                         :key="opt.value"
@@ -344,7 +342,7 @@ onUnmounted(() => {
                     >
                         {{ opt.label }}
                     </button>
-                </nav>
+                </HorizontalScrollTabs>
                 <div class="relative w-full sm:w-72">
                     <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
                     <input

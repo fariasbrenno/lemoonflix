@@ -19,6 +19,15 @@ class AffiliateProgramPublicController extends Controller
 
     public function show(string $slug): Response
     {
+        $program = $this->enrollment->findProgramBySlug($slug);
+
+        if (! $this->enrollment->isProgramPubliclyAvailable($program)) {
+            return Inertia::render('Afiliar/Unavailable', [
+                'slug' => $slug,
+                'reason' => ! $program->enabled ? 'disabled' : 'inactive_product',
+            ]);
+        }
+
         ['program' => $program, 'product' => $product] = $this->enrollment->resolveEnabledProgram($slug);
 
         return Inertia::render('Afiliar/Show', [
@@ -30,6 +39,15 @@ class AffiliateProgramPublicController extends Controller
 
     public function cadastro(Request $request, string $slug): Response|RedirectResponse
     {
+        $program = $this->enrollment->findProgramBySlug($slug);
+
+        if (! $this->enrollment->isProgramPubliclyAvailable($program)) {
+            return Inertia::render('Afiliar/Unavailable', [
+                'slug' => $slug,
+                'reason' => ! $program->enabled ? 'disabled' : 'inactive_product',
+            ]);
+        }
+
         ['program' => $program, 'product' => $product] = $this->enrollment->resolveEnabledProgram($slug);
 
         $user = $request->user();
@@ -56,6 +74,14 @@ class AffiliateProgramPublicController extends Controller
 
     public function register(Request $request, string $slug): RedirectResponse
     {
+        $program = $this->enrollment->findProgramBySlug($slug);
+
+        if (! $this->enrollment->isProgramPubliclyAvailable($program)) {
+            return redirect()
+                ->route('afiliar.show', ['slug' => $slug])
+                ->with('error', 'Este programa de afiliados não está disponível no momento.');
+        }
+
         ['program' => $program, 'product' => $product] = $this->enrollment->resolveEnabledProgram($slug);
 
         $validated = $request->validate([

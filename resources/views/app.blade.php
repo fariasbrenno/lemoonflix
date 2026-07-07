@@ -5,12 +5,16 @@
     $skipPanelPwa = $isMemberArea || $isCheckout;
 @endphp
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" @class(['panel-app' => ! $skipPanelPwa])>
 <head>
     <meta charset="utf-8">
+    @if($skipPanelPwa)
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    @else
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+    @endif
     <script>
-        (function(){try{var s=localStorage.getItem('theme');var t=s||'dark';document.documentElement.classList.toggle('dark',t==='dark');}catch(_){}})();
+        (function(){try{var s=localStorage.getItem('theme');var t=s||'dark';document.documentElement.classList.toggle('dark',t==='dark');@unless($skipPanelPwa)if(window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true){document.documentElement.classList.add('pwa-standalone');}@endunless}catch(_){}})();
     </script>
     <meta name="csrf-token" content="{{ csrf_token() }}">
     @if(!empty($openGraph) && is_array($openGraph))
@@ -48,12 +52,15 @@
     @unless($skipPanelPwa)
     @php
         $wlFavicon = \App\Support\BrandFavicon::publicUrl();
+        $wlAppName = trim((string) config('getfy.app_name', config('app.name', 'Getfy')));
+        if ($wlAppName === '') {
+            $wlAppName = 'Getfy';
+        }
         $wlThemeColor = config('getfy.pwa_theme_color');
         $wlThemeColor = ($wlThemeColor !== null && $wlThemeColor !== '') ? $wlThemeColor : config('getfy.theme_primary', '#0ea5e9');
-        $pwaIconPath = config('getfy.pwa_icon') ?: config('getfy.pwa_icon_192');
-        $wlAppleIcon = (is_string($pwaIconPath) && $pwaIconPath !== '' && is_file(public_path(ltrim($pwaIconPath, '/'))))
-            ? url('/'.ltrim($pwaIconPath, '/'))
-            : null;
+        $wlAppleIcon = \App\Support\PwaIcon::customPublicUrl('192')
+            ?? \App\Support\PwaIcon::customPublicUrl('512')
+            ?? \App\Support\PwaIcon::publicUrl('192');
     @endphp
     <link rel="icon" href="{{ $wlFavicon }}" type="image/png" sizes="32x32">
     <link rel="shortcut icon" href="{{ $wlFavicon }}" type="image/png">
@@ -62,6 +69,7 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="{{ e($wlAppName) }}">
     @if($wlAppleIcon)
     <link rel="apple-touch-icon" href="{{ $wlAppleIcon }}">
     @endif

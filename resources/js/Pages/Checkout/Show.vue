@@ -33,6 +33,10 @@ import {
     isCheckoutBuilderPreviewUrl,
     subscribePreviewBroadcast,
 } from '@/lib/checkoutBuilderPreview';
+import {
+    isRunningInIframe,
+    startCheckoutEmbedResize,
+} from '@/lib/checkoutEmbed';
 
 defineOptions({ layout: null });
 
@@ -76,7 +80,13 @@ const props = defineProps({
     subscription_plan: { type: Object, default: null },
     /** Definido no servidor quando a URL traz `?preview=1` (preview no iframe do Builder). */
     checkout_builder_preview: { type: Boolean, default: false },
+    /** Incorporação em iframe externo habilitada no checkout_config. */
+    checkout_embed_enabled: { type: Boolean, default: false },
     plugin_checkout_extensions: { type: Array, default: () => [] },
+    cajupay_pay_account_id: { type: String, default: '' },
+    cajupay_public_key: { type: String, default: '' },
+    parcelado_sdk_options: { type: Object, default: () => ({}) },
+    pix_parcelado_rules: { type: Object, default: null },
 });
 
 const previewConfig = ref(null);
@@ -86,6 +96,13 @@ let lastAppliedPreviewSeq = 0;
 const isPreviewIframe = computed(
     () => props.checkout_builder_preview || isCheckoutBuilderPreviewUrl()
 );
+
+const isExternalEmbed = computed(
+    () => props.checkout_embed_enabled && isRunningInIframe() && !isPreviewIframe.value
+);
+
+const checkoutRootRef = ref(null);
+let stopEmbedResize = null;
 
 function applyPreviewPayload(data) {
     if (!data?.config) {
@@ -168,9 +185,14 @@ onUnmounted(() => {
         clearTimeout(initiateCheckoutDebounceTimer);
         initiateCheckoutDebounceTimer = null;
     }
+    stopEmbedResize?.();
+    stopEmbedResize = null;
     unregisterPreviewBridge();
     if (isPreviewIframe.value && typeof document !== 'undefined') {
         document.documentElement.classList.remove('checkout-builder-preview-mode');
+    }
+    if (isExternalEmbed.value && typeof document !== 'undefined') {
+        document.documentElement.classList.remove('checkout-embed-mode');
     }
 });
 
@@ -279,12 +301,19 @@ const hasSidebarBlocks = computed(() =>
 );
 
 const previewRootClass = computed(() => {
-    if (!isPreviewIframe.value) {
-        return '';
+    const classes = [];
+    if (isExternalEmbed.value) {
+        classes.push('checkout-embed-mode');
     }
-    return previewViewport.value === 'mobile'
-        ? 'checkout-preview--mobile'
-        : 'checkout-preview--desktop';
+    if (!isPreviewIframe.value) {
+        return classes.join(' ');
+    }
+    classes.push(
+        previewViewport.value === 'mobile'
+            ? 'checkout-preview--mobile'
+            : 'checkout-preview--desktop'
+    );
+    return classes.join(' ');
 });
 const timerConfig = computed(() => effectiveConfig.value?.timer ?? {});
 const salesNotificationConfig = computed(() => effectiveConfig.value?.sales_notification ?? {});
@@ -385,6 +414,12 @@ onMounted(() => {
     registerPreviewBridge();
     if (isPreviewIframe.value && typeof document !== 'undefined') {
         document.documentElement.classList.add('checkout-builder-preview-mode');
+    }
+    if (isExternalEmbed.value && typeof document !== 'undefined') {
+        document.documentElement.classList.add('checkout-embed-mode');
+    }
+    if (isExternalEmbed.value && checkoutRootRef.value) {
+        stopEmbedResize = startCheckoutEmbedResize(checkoutRootRef.value);
     }
     applyGeoLocaleFromServer();
     persistSessionCountryFromClient();
@@ -739,6 +774,7 @@ const hasCustomBodyEnd = computed(() => String(customBodyEndHtml.value).trim() !
     </Head>
     <div
         id="getfy-checkout-root"
+        ref="checkoutRootRef"
         data-checkout="page"
         class="min-h-screen transition-colors duration-300"
         :class="previewRootClass"
@@ -863,6 +899,9 @@ const hasCustomBodyEnd = computed(() => String(customBodyEndHtml.value).trim() !
                             :featured-currencies="featuredCurrencies"
                             :other-currencies="otherCurrencies"
                             :plugin-checkout-extensions="plugin_checkout_extensions"
+                            :product-name="product.name || ''"
+                            :cajupay-pay-account-id="cajupay_pay_account_id || ''"
+                            :parcelado-sdk-options="parcelado_sdk_options || {}"
                             :price-in-currency="priceInCurrency"
                             @coupon-applied="onCouponApplied"
                             @coupon-cleared="onCouponCleared"
@@ -960,9 +999,26 @@ const hasCustomBodyEnd = computed(() => String(customBodyEndHtml.value).trim() !
     padding-top: 0.75rem !important;
     padding-bottom: 0.75rem !important;
 }
+
+.checkout-embed-mode {
+    min-height: 0 !important;
+}
+
+.checkout-embed-mode [data-checkout="layout-inner"] {
+    padding-top: 0.75rem !important;
+    padding-bottom: 1rem !important;
+}
 </style>
 
 <style>
+html.checkout-embed-mode,
+html.checkout-embed-mode body {
+    height: auto;
+    min-height: 100%;
+    overflow: auto;
+    background: transparent;
+}
+
 html.checkout-builder-preview-mode,
 html.checkout-builder-preview-mode body {
     height: auto;

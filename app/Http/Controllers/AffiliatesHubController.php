@@ -58,7 +58,7 @@ class AffiliatesHubController extends Controller
                 'enabled' => $p->enabled,
                 'default_commission_percent' => (float) $p->default_commission_percent,
                 'public_slug' => $p->public_slug,
-                'public_page_url' => $p->public_slug ? url('/afiliar/'.$p->public_slug) : null,
+                'public_page_url' => ($p->enabled && $p->public_slug) ? url('/afiliar/'.$p->public_slug) : null,
                 'affiliates_count' => ProductAffiliate::where('product_id', $p->product_id)
                     ->where('status', ProductAffiliate::STATUS_APPROVED)->count(),
                 'pending_count' => ProductAffiliate::where('product_id', $p->product_id)
@@ -110,9 +110,23 @@ class AffiliatesHubController extends Controller
             'affiliate_code' => $a->affiliate_code,
             'status' => $a->status,
             'commission_percent' => $a->commission_percent !== null ? (float) $a->commission_percent : null,
-            'affiliate_link' => $a->product ? url('/c/'.$a->product->checkout_slug.'?ref='.$a->affiliate_code) : null,
+            'affiliate_link' => $this->affiliateCheckoutUrl($a->product, $a->affiliate_code),
             'user' => $a->user ? ['id' => $a->user->id, 'name' => $a->user->name, 'email' => $a->user->email] : null,
             'created_at' => $a->created_at?->toIso8601String(),
         ];
+    }
+
+    private function affiliateCheckoutUrl(?Product $product, string $affiliateCode): ?string
+    {
+        if (! $product) {
+            return null;
+        }
+
+        $checkoutSlug = trim((string) $product->checkout_slug);
+        if ($checkoutSlug === '' || ! $product->is_active) {
+            return null;
+        }
+
+        return url('/c/'.$checkoutSlug.'?ref='.$affiliateCode);
     }
 }

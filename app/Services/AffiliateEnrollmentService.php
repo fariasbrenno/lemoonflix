@@ -118,11 +118,11 @@ class AffiliateEnrollmentService
      */
     public function resolveEnabledProgram(string $slug): array
     {
-        $program = ProductAffiliateProgram::query()
-            ->where('public_slug', $slug)
-            ->where('enabled', true)
-            ->with('product')
-            ->firstOrFail();
+        $program = $this->findProgramBySlug($slug);
+
+        if (! $program->enabled) {
+            abort(403, 'Programa de afiliados desativado.');
+        }
 
         $product = $program->product;
         if (! $product instanceof Product) {
@@ -130,6 +130,28 @@ class AffiliateEnrollmentService
         }
 
         return ['program' => $program, 'product' => $product];
+    }
+
+    /**
+     * Localiza programa pelo slug público, independente de estar ativo.
+     */
+    public function findProgramBySlug(string $slug): ProductAffiliateProgram
+    {
+        return ProductAffiliateProgram::query()
+            ->where('public_slug', $slug)
+            ->with('product')
+            ->firstOrFail();
+    }
+
+    public function isProgramPubliclyAvailable(ProductAffiliateProgram $program): bool
+    {
+        if (! $program->enabled) {
+            return false;
+        }
+
+        $product = $program->product;
+
+        return $product instanceof Product && $product->is_active;
     }
 
     /**

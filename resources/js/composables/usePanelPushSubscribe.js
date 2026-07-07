@@ -29,8 +29,19 @@ export function usePanelPushSubscribe() {
     const swScope = computed(() => page.props.pwa_sw_scope ?? PANEL_SW_SCOPE);
 
     async function syncSubscriptionToServer(payload) {
-        const { data } = await axios.post(PANEL_PUSH_SUBSCRIBE_URL, payload);
-        return !!data?.success;
+        try {
+            const { data } = await axios.post(PANEL_PUSH_SUBSCRIBE_URL, payload);
+            return { ok: !!data?.success, status: 200 };
+        } catch (e) {
+            if (import.meta.env?.DEV) {
+                console.warn('[push] sync error:', e?.response?.status, e?.response?.data);
+            }
+            return {
+                ok: false,
+                status: e?.response?.status ?? 0,
+                message: e?.response?.data?.message,
+            };
+        }
     }
 
     async function runEnsure({ forceRenew = false } = {}) {

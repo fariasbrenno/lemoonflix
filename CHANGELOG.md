@@ -1,5 +1,37 @@
 # Changelog
 
+## [2.0.4] - 03-07-2026
+
+### Novidades
+
+- **Integração IntegraX (SMS)**: conexão por token em Integrações, aba **SMS** no produto com envio de acesso pós-compra, PIX gerado e recuperação de carrinho.
+- **Notificações push**: opção de **gerar chaves VAPID** em Configurações → Notificações push (gravação automática no `.env`).
+- **Checkout em páginas externas**: checkout passa a carregar via **iframe**, configurável no **Checkout Builder**.
+
+### Correções
+
+- **Vendas (`/vendas`)**: corrigida a **paginação** da listagem.
+- **Abas no painel**: corrigido o **scroll horizontal** de abas dentro das páginas (integrações, edição de produto, etc.).
+- **Notificações push (VAPID)**: corrigida falha ao gerar chaves em ambientes **Windows/Laragon** (`Unable to create the key`).
+- **Docker / `update.sh`**: chaves VAPID geradas ou restauradas automaticamente após atualização quando ausentes no `.env` (sincroniza com `.docker/pwa_vapid.env` no volume compartilhado).
+- **Notificações push (VAPID)**: painel e envio de push passam a ler chaves direto do `.env`/volume (ignoram `config:cache` desatualizado); corrigida leitura quando há linhas `PWA_VAPID_*` duplicadas no `.env`.
+- **Segurança (hospedagem compartilhada)**: corrigida exposição do `.env` e de pastas internas (`vendor/`, `config/`, etc.) quando o document root aponta para a raiz do projeto — bloqueio via `.htaccess` e middleware.
+
+## [2.0.3] - 15-06-2026
+
+### Novidades
+
+- **PIX Parcelado (CajuPay)**: novo método de pagamento com checkout embed via SDK, adesão no gateway, regras por produto (parcelas, entrada fixa ou percentual), webhooks de parcelas e tela de PIX da entrada.
+
+### Melhorias
+
+- **Recuperação de carrinho / SMS (CajuPay)**: compatibilidade com fluxos de recuperação — telefone do comprador repassado à CajuPay (E.164) para SMS de Recovery/Acesso e links de retorno ao checkout com dados do cliente pré-preenchidos.
+- **E-mail (SMTP genérico)**: configuração passa a aceitar **e-mail do remetente** separado do usuário SMTP (SendGrid e Hostinger mantêm o comportamento anterior).
+
+### Correções
+
+- **Plugins**: corrigido erro falso ao instalar plugin em ambientes onde `PHP_BINARY` aponta para **php-fpm** (validação de sintaxe do `bootstrap.php` passa a usar `token_get_all` em vez de `exec php -l`).
+
 ## [2.0.2] - 08-06-2026
 
 ### Correções

@@ -33,21 +33,69 @@ async function load() {
         const { data } = await axios.get(`/produtos/${props.productId}/affiliate-program`);
         program.value = data.program;
         affiliates.value = data.affiliates ?? [];
-        Object.assign(programForm.value, data.program ?? {});
+        syncProgramForm(data.program ?? {});
     } finally {
         loading.value = false;
     }
+}
+
+function syncProgramForm(source) {
+    programForm.value = {
+        enabled: Boolean(source.enabled),
+        default_commission_percent: Number(source.default_commission_percent ?? 10),
+        manual_approval: source.manual_approval !== false,
+        share_buyer_data: Boolean(source.share_buyer_data),
+        public_slug: source.public_slug ?? '',
+        support_email: source.support_email ?? '',
+        description: source.description ?? '',
+        settlement_days_pix: Number(source.settlement_days_pix ?? 0),
+        settlement_days_card: Number(source.settlement_days_card ?? 30),
+        settlement_days_boleto: Number(source.settlement_days_boleto ?? 2),
+    };
+}
+
+function buildProgramPayload() {
+    const f = programForm.value;
+
+    return {
+        enabled: Boolean(f.enabled),
+        default_commission_percent: Number(f.default_commission_percent),
+        manual_approval: Boolean(f.manual_approval),
+        share_buyer_data: Boolean(f.share_buyer_data),
+        public_slug: f.public_slug?.trim() || null,
+        support_email: f.support_email?.trim() || null,
+        description: f.description?.trim() || null,
+        settlement_days_pix: Number(f.settlement_days_pix ?? 0),
+        settlement_days_card: Number(f.settlement_days_card ?? 30),
+        settlement_days_boleto: Number(f.settlement_days_boleto ?? 2),
+    };
 }
 
 async function saveProgram() {
     saving.value = true;
     message.value = '';
     try {
-        const { data } = await axios.put(`/produtos/${props.productId}/affiliate-program`, programForm.value);
+        const payload = buildProgramPayload();
+        let data;
+        try {
+            ({ data } = await axios.put(`/produtos/${props.productId}/affiliate-program`, payload));
+        } catch (putError) {
+            if (putError.response?.status === 405 || putError.response?.status === 501) {
+                ({ data } = await axios.post(`/produtos/${props.productId}/affiliate-program`, payload));
+            } else {
+                throw putError;
+            }
+        }
         program.value = data.program;
-        message.value = 'Programa salvo.';
+        syncProgramForm(data.program ?? {});
+        message.value = data.program?.enabled
+            ? 'Programa salvo e afiliação ativada.'
+            : 'Programa salvo.';
     } catch (e) {
-        message.value = e.response?.data?.message || 'Erro ao salvar.';
+        const errors = e.response?.data?.errors;
+        message.value = errors
+            ? Object.values(errors).flat().join(' ')
+            : e.response?.data?.message || 'Erro ao salvar.';
     } finally {
         saving.value = false;
     }
@@ -63,7 +111,14 @@ function copyLink(url) {
     message.value = 'Link copiado.';
 }
 
-const publicPageUrl = computed(() => program.value?.public_page_url || '');
+const publicPageUrl = computed(() => {
+    if (!programForm.value.enabled) {
+        return '';
+    }
+
+    return program.value?.public_page_url
+        || (programForm.value.public_slug ? `/afiliar/${programForm.value.public_slug}` : '');
+});
 
 const affiliateRows = computed(() =>
     affiliates.value.map((a) => ({
@@ -142,6 +197,13 @@ onMounted(load);
                     <p class="font-medium">Página de cadastro de afiliados</p>
                     <a :href="publicPageUrl" class="text-[var(--color-primary)] break-all" target="_blank" rel="noopener">{{ publicPageUrl }}</a>
                 </div>
+                <p
+                    v-else-if="programForm.public_slug"
+                    class="rounded-lg border border-amber-200/80 bg-amber-50 px-3 py-2.5 text-sm text-amber-950 dark:border-amber-900/40 dark:bg-amber-950/25 dark:text-amber-100"
+                >
+                    Marque <strong>Ativar afiliação para este produto</strong> e salve para liberar o link de cadastro
+                    (<code class="text-xs">/afiliar/{{ programForm.public_slug }}</code>).
+                </p>
                 <Button type="submit" :disabled="saving">{{ saving ? 'Salvando…' : 'Salvar programa' }}</Button>
                 <p v-if="message" class="text-sm text-zinc-500">{{ message }}</p>
             </form>

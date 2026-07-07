@@ -2,72 +2,48 @@
 
 namespace App\Console\Commands;
 
+use App\Support\VapidKeysManager;
 use Illuminate\Console\Command;
-use Minishlink\WebPush\VAPID;
 
 class GenerateVapidKeysCommand extends Command
 {
-    protected $signature = 'pwa:vapid';
+    protected $signature = 'pwa:vapid {--force : Regenera mesmo se já existirem chaves válidas}';
 
     protected $description = 'Gera chaves VAPID para PWA (notificações push) e atualiza o .env';
 
-    public function handle(): int
+    public function handle(VapidKeysManager $manager): int
     {
-        $envPath = base_path('.env');
-        if (! file_exists($envPath)) {
-            $this->error('Arquivo .env não encontrado.');
-            return self::FAILURE;
-        }
+        $force = (bool) $this->option('force');
+        $result = $force ? $manager->generate(true) : $manager->ensureConfigured(false);
 
-        try {
-            $keys = VAPID::createVapidKeys();
-        } catch (\Throwable $e) {
-            $this->error('Falha ao gerar chaves: ' . $e->getMessage());
-            return self::FAILURE;
-        }
-
-        $publicKey = $keys['publicKey'];
-        $privateKey = $keys['privateKey'];
-
-        try {
-            VAPID::validate([
-                'subject' => 'mailto:validate@example.invalid',
-                'publicKey' => $publicKey,
-                'privateKey' => $privateKey,
-            ]);
-        } catch (\Throwable $e) {
-            $this->error('Chaves geradas falharam na validação interna: ' . $e->getMessage());
+        if (! ($result['success'] ?? false)) {
+            $this->error($result['message'] ?? 'Falha ao gerar chaves VAPID.');
 
             return self::FAILURE;
         }
 
-        $content = file_get_contents($envPath);
-        $hasPublic = preg_match('/^PWA_VAPID_PUBLIC=/m', $content);
-        $hasPrivate = preg_match('/^PWA_VAPID_PRIVATE=/m', $content);
+        if ($result['already_configured'] ?? false) {
+            $this->info($result['message']);
+            $this->comment('Use --force para regenerar (inscrições push existentes precisarão ser reativadas).');
 
-        $publicEscaped = '"' . str_replace('"', '\\"', $publicKey) . '"';
-        $privateEscaped = '"' . str_replace('"', '\\"', $privateKey) . '"';
-
-        if ($hasPublic) {
-            $content = preg_replace('/^PWA_VAPID_PUBLIC=.*/m', 'PWA_VAPID_PUBLIC=' . $publicEscaped, $content);
-        } else {
-            $content .= "\n# PWA Painel: chaves VAPID (geradas via php artisan pwa:vapid)\n";
-            $content .= 'PWA_VAPID_PUBLIC=' . $publicEscaped . "\n";
-        }
-        if ($hasPrivate) {
-            $content = preg_replace('/^PWA_VAPID_PRIVATE=.*/m', 'PWA_VAPID_PRIVATE=' . $privateEscaped, $content);
-        } else {
-            $content .= 'PWA_VAPID_PRIVATE=' . $privateEscaped . "\n";
+            return self::SUCCESS;
         }
 
-        file_put_contents($envPath, $content);
+        if ($result['restored_from_shared'] ?? false) {
+            $this->info($result['message']);
+
+            return self::SUCCESS;
+        }
 
         $this->info('Chaves VAPID geradas e salvas no .env.');
         $this->line('');
-        $this->line('PWA_VAPID_PUBLIC=' . $publicKey);
-        $this->line('PWA_VAPID_PRIVATE=' . str_repeat('*', min(strlen($privateKey), 20)) . '...');
+        if (! empty($result['public_key'])) {
+            $this->line('PWA_VAPID_PUBLIC='.$result['public_key']);
+        }
+        $this->line('PWA_VAPID_PRIVATE='.str_repeat('*', 20).'...');
         $this->line('');
         $this->comment('Reinicie o servidor ou rode "php artisan config:clear" para carregar as novas variáveis.');
+        $this->comment('Usuários com push ativo devem reativar notificações no painel após trocar o par VAPID.');
 
         return self::SUCCESS;
     }

@@ -64,6 +64,9 @@ return [
         'vapid_public' => VapidEnvKeys::normalize(env('PWA_VAPID_PUBLIC')),
         'vapid_private' => VapidEnvKeys::normalize(env('PWA_VAPID_PRIVATE')),
     ],
+    'integrax' => [
+        'default_from' => env('INTEGRAX_DEFAULT_FROM', ''),
+    ],
     /** Loja pública de plugins (aba Gerenciar plugins → Loja de plugins). */
     'plugin_store_url' => 'https://store.getfy.cloud',
 
