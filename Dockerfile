@@ -3,10 +3,11 @@ FROM php:8.2-fpm-alpine AS php_extensions_builder
 
 RUN apk add --no-cache --virtual .build-deps \
     $PHPIZE_DEPS \
-    libzip-dev libpng-dev oniguruma-dev icu-dev libxml2-dev \
+    libzip-dev libpng-dev oniguruma-dev icu-dev libxml2-dev freetype-dev libjpeg-turbo-dev \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && pecl install redis \
     && docker-php-ext-enable redis \
-    && docker-php-ext-install -j"$(nproc)" pdo_mysql zip exif intl opcache pcntl bcmath \
+    && docker-php-ext-install -j"$(nproc)" pdo_mysql zip exif intl opcache pcntl bcmath gd \
     && mkdir -p /export-inis \
     && cp /usr/local/etc/php/conf.d/docker-php-ext-*.ini /export-inis/ \
     && apk del .build-deps \
@@ -25,7 +26,7 @@ COPY --from=php_extensions_builder /export-inis/ /usr/local/etc/php/conf.d/
 RUN apk add --no-cache \
     nginx supervisor curl \
     git unzip mysql-client \
-    libzip libpng oniguruma icu-libs icu-data-en libxml2
+    libzip libpng oniguruma icu-libs icu-data-en libxml2 freetype libjpeg-turbo
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
@@ -43,7 +44,8 @@ COPY docker/entrypoint.sh /usr/local/bin/getfy-entrypoint
 RUN chmod +x /usr/local/bin/getfy-entrypoint \
     && mkdir -p storage/framework/cache/data storage/framework/sessions storage/framework/views bootstrap/cache .docker .docker/plugins-installed \
     && mkdir -p /run/nginx \
-    && chmod -R 777 storage bootstrap/cache .docker
+    && chmod -R 777 storage bootstrap/cache .docker \
+    && composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --no-scripts
 
 EXPOSE 80
 

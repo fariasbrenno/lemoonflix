@@ -77,7 +77,12 @@ class DockerSetupState
             return false;
         }
 
-        if ($host === '' || $host === 'localhost' || $host === '127.0.0.1') {
+        if ($host === '') {
+            return false;
+        }
+
+        $isLocalHost = $host === 'localhost' || $host === '127.0.0.1';
+        if ($isLocalHost && app()->isProduction()) {
             return false;
         }
 
