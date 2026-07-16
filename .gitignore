@@ -29,4 +29,6 @@ Thumbs.db
 /docs
 /Docs Gateways
 docs
-Docs Gateways.docker/
+Docs Gateways
+
+.docker/
