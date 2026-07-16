@@ -15,8 +15,10 @@ class SendMetaPurchaseCapiOnOrderCompleted implements ShouldQueue
 
     public int $backoff = 30;
 
-    public function handle(OrderCompleted $event, MetaConversionsApiService $metaConversionsApiService): void
+    public function __construct(private MetaConversionsApiService $metaConversionsApiService) {}
+
+    public function handle(OrderCompleted $event): void
     {
-        $metaConversionsApiService->sendPurchaseForCompletedOrder($event->order);
+        $this->metaConversionsApiService->sendPurchaseForCompletedOrder($event->order);
     }
 }
